@@ -49,21 +49,21 @@
 <body>
   <main class="card">
     <h1>Live Face Verification</h1>
-    <p>Allow camera access and follow the live verification challenge. Your live face must match the uploaded profile photo. The camera image is processed locally and is not uploaded or saved.</p>
+    <p>Allow camera access. Your live face will be compared with the uploaded profile photo. The camera image is processed locally and is not uploaded or saved.</p>
 
     <div class="video-wrap">
       <video id="video" autoplay muted playsinline></video>
     </div>
 
     <div id="status" class="status busy">Loading face-verification models...</div>
-    <div id="challengeMeter" class="meter"><strong>Requirement:</strong> exactly one face, face recognition match, and a live-person blink challenge. You will be asked to blink twice.</div>
+    <div id="challengeMeter" class="meter"><strong>Requirement:</strong> exactly one live face and a face-recognition match with your uploaded profile photo.</div>
 
     <div class="actions">
       <button id="cancel" type="button">Cancel</button>
       <button id="capture" type="button" disabled>Start Live Verification</button>
     </div>
 
-    <div class="small">Face recognition and liveness checks run locally in this page. These checks significantly reduce simple photo/screen spoofing, but no browser-only method can guarantee detection of every sophisticated replay attack.</div>
+    <div class="small">Face recognition runs locally in this page. The camera image is not uploaded or saved.</div>
   </main>
 
 <script>
@@ -81,9 +81,6 @@
   const MODEL_BASE = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js-models/master/';
   const MATCH_THRESHOLD = 0.55;
   const LIVE_SAMPLE_THRESHOLD = 0.62;
-  const BLINK_CLOSED = 0.215;
-  const BLINK_OPEN = 0.255;
-  const CHALLENGE_TIMEOUT_MS = 12000;
 
   let stream = null;
   let profilePhotoDataUrl = '';
@@ -97,7 +94,7 @@
   }
 
   function setChallenge(text) {
-    challengeMeter.innerHTML = '<strong>Live challenge:</strong> ' + text;
+    challengeMeter.innerHTML = '<strong>Live verification:</strong> ' + text;
   }
 
   function stopCamera() {
@@ -125,24 +122,6 @@
 
   function distance(a, b) {
     return faceapi.euclideanDistance(a, b);
-  }
-
-  function eyeAspectRatio(points) {
-    const a = Math.hypot(points[1].x - points[5].x, points[1].y - points[5].y);
-    const b = Math.hypot(points[2].x - points[4].x, points[2].y - points[4].y);
-    const c = Math.hypot(points[0].x - points[3].x, points[0].y - points[3].y);
-    return c ? (a + b) / (2 * c) : 0;
-  }
-
-  function getLivenessMetrics(landmarks) {
-    const positions = landmarks.positions;
-    const leftEye = positions.slice(36, 42);
-    const rightEye = positions.slice(42, 48);
-    const leftEar = eyeAspectRatio(leftEye);
-    const rightEar = eyeAspectRatio(rightEye);
-    const ear = (leftEar + rightEar) / 2;
-
-    return { ear };
   }
 
   async function detectLiveFace(source) {
@@ -219,8 +198,8 @@
       if (capture.disabled) {
         setStatus('Camera ready. Finishing face-verification setup...', 'busy');
       } else {
-        setStatus('Ready. Click Start Live Verification and follow the challenge.', 'success');
-        setChallenge('Click Start Live Verification.');
+        setStatus('Ready. Click Start Live Verification to verify your face.', 'success');
+        setChallenge('Click Start Live Verification to compare your live face.');
       }
     } catch (err) {
       capture.disabled = true;
@@ -237,51 +216,6 @@
 
   function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  async function collectLiveness() {
-    const deadline = Date.now() + CHALLENGE_TIMEOUT_MS;
-    let blinkCount = 0;
-    let eyesClosed = false;
-    let samples = 0;
-    let matchingSamples = 0;
-
-    while (Date.now() < deadline) {
-      const result = await detectLiveFace(video);
-      if (!result.ok) {
-        setStatus(result.message, 'error');
-        await wait(90);
-        continue;
-      }
-
-      const d = distance(profileDescriptor, result.descriptor);
-      samples++;
-      if (d <= LIVE_SAMPLE_THRESHOLD) matchingSamples++;
-
-      if (!eyesClosed && result.metrics.ear < BLINK_CLOSED) {
-        eyesClosed = true;
-      } else if (eyesClosed && result.metrics.ear > BLINK_OPEN) {
-        blinkCount++;
-        eyesClosed = false;
-        setStatus('Blink detected: ' + blinkCount + '/2', 'busy');
-        setChallenge('Blink naturally twice. ' + blinkCount + '/2 detected.');
-        if (blinkCount >= 2) return { ok:true, samples, matchingSamples };
-      }
-
-      await wait(90);
-    }
-
-    if (samples < 3 || matchingSamples / Math.max(1, samples) < 0.60) {
-      return { ok:false, message:'The live face could not be tracked consistently. Please face the camera and try again.' };
-    }
-
-    return { ok:false, message:'Two blinks were not detected. Please blink naturally twice and try again.' };
-  }
-
-  async function runLivenessChallenge() {
-    setChallenge('Blink naturally twice.');
-    setStatus('Liveness check: blink twice.', 'busy');
-    return await collectLiveness();
   }
 
   async function verifyIdentity() {
@@ -323,17 +257,13 @@
     capture.disabled = true;
 
     try {
-      setChallenge('Follow the instructions shown here.');
-      const live = await runLivenessChallenge();
-      if (!live.ok) throw new Error(live.message);
-
-      setChallenge('Liveness passed. Checking identity...');
-      setStatus('Liveness passed. Comparing the live face with the uploaded profile photo...', 'busy');
+      setChallenge('Checking your live face against the uploaded profile photo...');
+      setStatus('Face recognition in progress. Keep your face centered and visible...', 'busy');
       const average = await verifyIdentity();
 
       stopCamera();
-      setChallenge('Verification passed.');
-      setStatus('Face recognition and liveness verification passed. Returning to registration...', 'success');
+      setChallenge('Face verification passed.');
+      setStatus('Live face verification passed. Returning to registration...', 'success');
 
       if (window.opener && !window.opener.closed) {
         const targetOrigin = new URL(document.referrer || location.href).origin;
@@ -341,7 +271,7 @@
           type:'JPS_CAMERA_CONFIRMED',
           nonce:nonce,
           match:true,
-          liveness:true,
+          liveness:false,
           distance:Number(average.toFixed(4)),
           timestamp:Date.now()
         }, targetOrigin === location.origin ? '*' : targetOrigin);
@@ -372,8 +302,8 @@
       if (!stream) await startCamera();
       capture.disabled = !(modelsReady && profileDescriptor && video.videoWidth);
       if (!capture.disabled) {
-        setStatus('Ready. Click Start Live Verification and follow the challenge.', 'success');
-        setChallenge('Click Start Live Verification.');
+        setStatus('Ready. Click Start Live Verification to verify your face.', 'success');
+        setChallenge('Click Start Live Verification to compare your live face.');
       }
     } catch (err) {
       capture.disabled = true;
@@ -384,8 +314,8 @@
   video.addEventListener('loadedmetadata', function () {
     if (modelsReady && profileDescriptor && stream) {
       capture.disabled = false;
-      setStatus('Ready. Click Start Live Verification and follow the challenge.', 'success');
-      setChallenge('Click Start Live Verification.');
+      setStatus('Ready. Click Start Live Verification to verify your face.', 'success');
+      setChallenge('Click Start Live Verification to compare your live face.');
     }
   });
 

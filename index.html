@@ -8,8 +8,8 @@
   <style>
     * { box-sizing: border-box; }
     html, body { margin:0; min-height:100%; font-family:Arial,Helvetica,sans-serif; background:#f7f3fc; color:#1f2937; }
-    body { display:flex; align-items:center; justify-content:center; padding:18px; }
-    .card { width:min(540px,100%); background:#fff; border-radius:18px; padding:20px; box-shadow:0 20px 60px rgba(15,23,42,.14); }
+    body { display:flex; align-items:center; justify-content:center; min-height:100dvh; padding:clamp(8px,2vw,18px); }
+    .card { width:min(540px,100%); max-height:calc(100dvh - 16px); overflow:auto; background:#fff; border-radius:18px; padding:clamp(14px,3vw,20px); box-shadow:0 20px 60px rgba(15,23,42,.14); }
     h1 { margin:0 0 6px; font-size:21px; color:#4b3b63; }
     p { margin:0 0 15px; color:#64748b; font-size:13px; line-height:1.5; }
     .video-wrap { position:relative; width:100%; aspect-ratio:4/3; overflow:hidden; border-radius:14px; background:#111; }
@@ -18,14 +18,32 @@
     .status.error { color:#b42318; }
     .status.success { color:#18794e; }
     .status.busy { color:#5b4a72; }
-    .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
-    button { border:0; border-radius:9px; padding:10px 14px; font-weight:700; cursor:pointer; }
+    .actions { display:grid; grid-template-columns:1fr 1.5fr; gap:8px; margin-top:14px; }
+    button { min-height:44px; border:0; border-radius:9px; padding:10px 14px; font-size:13px; touch-action:manipulation; font-weight:700; cursor:pointer; }
     #capture { background:#7c5bb3; color:#fff; }
     #cancel { background:#eee9f5; color:#554665; }
     button:disabled { opacity:.55; cursor:not-allowed; }
     .small { margin-top:10px; font-size:11px; color:#7b7287; }
     .meter { margin-top:12px; padding:10px 12px; border-radius:10px; background:#f6f2fb; font-size:12px; color:#5b4a72; }
     .meter strong { color:#3f3150; }
+
+    @media (max-width: 560px) {
+      .card { border-radius:14px; }
+      h1 { font-size:19px; }
+      p { font-size:12px; }
+      .video-wrap { aspect-ratio:3/4; max-height:58dvh; }
+      .actions { grid-template-columns:1fr; }
+      button { width:100%; }
+      .meter { font-size:11px; }
+    }
+
+    @media (max-height: 650px) and (orientation:landscape) {
+      body { align-items:flex-start; }
+      .card { display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; max-width:760px; }
+      .card h1, .card > p, .card .small { grid-column:1/-1; }
+      .video-wrap { grid-row:span 3; aspect-ratio:4/3; }
+      .actions { align-self:end; }
+    }
   </style>
 </head>
 <body>
@@ -137,7 +155,7 @@
 
   async function detectLiveFace(source) {
     const result = await faceapi
-      .detectAllFaces(source, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.55 }))
+      .detectAllFaces(source, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.55 }))
       .withFaceLandmarks()
       .withFaceDescriptors();
 
@@ -200,7 +218,7 @@
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode:'user', width:{ideal:720}, height:{ideal:540} },
+        video: { facingMode:'user', width:{ideal:640}, height:{ideal:480} },
         audio:false
       });
       video.srcObject = stream;
@@ -243,7 +261,7 @@
       const result = await detectLiveFace(video);
       if (!result.ok) {
         setStatus(result.message, 'error');
-        await wait(180);
+        await wait(90);
         continue;
       }
 
@@ -269,7 +287,7 @@
         if (movedPositive && movedNegative) return { ok:true, samples, matchingSamples };
       }
 
-      await wait(140);
+      await wait(90);
     }
 
     if (samples < 3 || matchingSamples / Math.max(1, samples) < 0.60) {
@@ -304,7 +322,7 @@
       const result = await detectLiveFace(video);
       if (!result.ok) throw new Error(result.message);
       distances.push(distance(profileDescriptor, result.descriptor));
-      if (i < 3) await wait(250);
+      if (i < 3) await wait(120);
     }
 
     const matched = distances.filter(d => d <= MATCH_THRESHOLD).length;

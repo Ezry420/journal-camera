@@ -265,14 +265,18 @@
       setStatus('Live face verification passed. Returning to registration...', 'success');
 
       if (window.opener && !window.opener.closed) {
-        const targetOrigin = new URL(document.referrer || location.href).origin;
+        // The opener is the Apps Script registration page, while this page
+        // is hosted on GitHub Pages. Do not derive the target origin from
+        // document.referrer because that can be missing or different in
+        // popup navigation. The registration page validates both event.source
+        // and event.origin before accepting this message.
         window.opener.postMessage({
           type:'JPS_CAMERA_CONFIRMED',
           nonce:nonce,
           match:true,
           distance:Number(average.toFixed(4)),
           timestamp:Date.now()
-        }, targetOrigin === location.origin ? '*' : targetOrigin);
+        }, '*');
         setTimeout(() => window.close(), 700);
       } else {
         setStatus('Verification passed, but the registration window could not be reached. Please close this window and retry.', 'error');

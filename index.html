@@ -153,8 +153,7 @@
     return {
       ok:true,
       descriptor:item.descriptor,
-      landmarks:item.landmarks,
-      metrics:getLivenessMetrics(item.landmarks)
+      landmarks:item.landmarks
     };
   }
 
@@ -271,7 +270,6 @@
           type:'JPS_CAMERA_CONFIRMED',
           nonce:nonce,
           match:true,
-          liveness:false,
           distance:Number(average.toFixed(4)),
           timestamp:Date.now()
         }, targetOrigin === location.origin ? '*' : targetOrigin);

@@ -56,7 +56,7 @@
     </div>
 
     <div id="status" class="status busy">Loading face-verification models...</div>
-    <div id="challengeMeter" class="meter"><strong>Requirement:</strong> exactly one face, face recognition match, and a live-person challenge. You will be asked to blink and move your head.</div>
+    <div id="challengeMeter" class="meter"><strong>Requirement:</strong> exactly one face, face recognition match, and a live-person blink challenge. You will be asked to blink twice.</div>
 
     <div class="actions">
       <button id="cancel" type="button">Cancel</button>
@@ -83,7 +83,6 @@
   const LIVE_SAMPLE_THRESHOLD = 0.62;
   const BLINK_CLOSED = 0.215;
   const BLINK_OPEN = 0.255;
-  const HEAD_DELTA = 0.115;
   const CHALLENGE_TIMEOUT_MS = 12000;
 
   let stream = null;
@@ -143,14 +142,7 @@
     const rightEar = eyeAspectRatio(rightEye);
     const ear = (leftEar + rightEar) / 2;
 
-    const leftCorner = positions[36];
-    const rightCorner = positions[45];
-    const nose = positions[30];
-    const eyeWidth = Math.max(1, Math.abs(rightCorner.x - leftCorner.x));
-    const eyeCenterX = (leftCorner.x + rightCorner.x) / 2;
-    const yaw = (nose.x - eyeCenterX) / eyeWidth;
-
-    return { ear, yaw };
+    return { ear };
   }
 
   async function detectLiveFace(source) {
@@ -247,13 +239,10 @@
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  async function collectLiveness(challenge) {
+  async function collectLiveness() {
     const deadline = Date.now() + CHALLENGE_TIMEOUT_MS;
     let blinkCount = 0;
     let eyesClosed = false;
-    let baselineYaw = null;
-    let movedPositive = false;
-    let movedNegative = false;
     let samples = 0;
     let matchingSamples = 0;
 
@@ -269,22 +258,14 @@
       samples++;
       if (d <= LIVE_SAMPLE_THRESHOLD) matchingSamples++;
 
-      if (baselineYaw === null) baselineYaw = result.metrics.yaw;
-      const delta = result.metrics.yaw - baselineYaw;
-
-      if (challenge === 'blink') {
-        if (!eyesClosed && result.metrics.ear < BLINK_CLOSED) {
-          eyesClosed = true;
-        } else if (eyesClosed && result.metrics.ear > BLINK_OPEN) {
-          blinkCount++;
-          eyesClosed = false;
-          setStatus('Blink detected: ' + blinkCount + '/2', 'busy');
-          if (blinkCount >= 2) return { ok:true, samples, matchingSamples };
-        }
-      } else if (challenge === 'move') {
-        if (delta > HEAD_DELTA) movedPositive = true;
-        if (delta < -HEAD_DELTA) movedNegative = true;
-        if (movedPositive && movedNegative) return { ok:true, samples, matchingSamples };
+      if (!eyesClosed && result.metrics.ear < BLINK_CLOSED) {
+        eyesClosed = true;
+      } else if (eyesClosed && result.metrics.ear > BLINK_OPEN) {
+        blinkCount++;
+        eyesClosed = false;
+        setStatus('Blink detected: ' + blinkCount + '/2', 'busy');
+        setChallenge('Blink naturally twice. ' + blinkCount + '/2 detected.');
+        if (blinkCount >= 2) return { ok:true, samples, matchingSamples };
       }
 
       await wait(90);
@@ -294,26 +275,13 @@
       return { ok:false, message:'The live face could not be tracked consistently. Please face the camera and try again.' };
     }
 
-    return { ok:false, message: challenge === 'blink' ? 'The required two blinks were not detected. Please try again.' : 'The required head movement was not detected. Please turn your head naturally to both sides.' };
+    return { ok:false, message:'Two blinks were not detected. Please blink naturally twice and try again.' };
   }
 
   async function runLivenessChallenge() {
-    const challenges = Math.random() < 0.5 ? ['blink', 'move'] : ['move', 'blink'];
-
-    for (let i = 0; i < challenges.length; i++) {
-      if (challenges[i] === 'blink') {
-        setChallenge('Blink naturally twice.');
-        setStatus('Liveness check 1/2: blink twice.', 'busy');
-      } else {
-        setChallenge('Slowly turn your head to both sides.');
-        setStatus('Liveness check 2/2: turn your head left and right.', 'busy');
-      }
-
-      const result = await collectLiveness(challenges[i]);
-      if (!result.ok) return result;
-    }
-
-    return { ok:true };
+    setChallenge('Blink naturally twice.');
+    setStatus('Liveness check: blink twice.', 'busy');
+    return await collectLiveness();
   }
 
   async function verifyIdentity() {

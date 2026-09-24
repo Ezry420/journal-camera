@@ -171,8 +171,12 @@
       });
       video.srcObject = stream;
       await video.play();
-      capture.disabled = false;
-      setStatus('Camera ready. Face the camera directly, then click Capture & Verify.');
+      capture.disabled = !(modelsReady && profileDescriptor);
+      if (modelsReady && profileDescriptor) {
+        setStatus('Camera ready. Face the camera directly, then click Capture & Verify.');
+      } else {
+        setStatus('Camera ready. Finishing face verification setup...', 'busy');
+      }
     } catch (err) {
       capture.disabled = true;
       const name = err && err.name ? err.name : '';
@@ -187,7 +191,10 @@
   }
 
   async function verifyLiveFace() {
-    if (busy || !modelsReady || !profileDescriptor || !video.videoWidth) return;
+    if (busy) return;
+    if (!modelsReady) { setStatus('Face-verification models are still loading. Please wait a moment.', 'error'); return; }
+    if (!profileDescriptor) { setStatus('The uploaded profile photo is not ready yet. Please wait a moment.', 'error'); return; }
+    if (!video.videoWidth) { setStatus('Camera is not ready yet. Please wait a moment.', 'error'); return; }
 
     busy = true;
     capture.disabled = true;
@@ -247,9 +254,18 @@
       await loadProfilePhoto(profilePhotoDataUrl);
       setStatus('Profile photo loaded. Starting the live camera...', 'busy');
       if (!stream) await startCamera();
+      capture.disabled = !(modelsReady && profileDescriptor && video.videoWidth);
+      if (!capture.disabled) setStatus('Ready. Face the camera directly, then click Capture & Verify.');
     } catch (err) {
       capture.disabled = true;
       setStatus(err && err.message ? err.message : 'The uploaded profile photo could not be verified.', 'error');
+    }
+  });
+
+  video.addEventListener('loadedmetadata', function () {
+    if (modelsReady && profileDescriptor && stream) {
+      capture.disabled = false;
+      setStatus('Ready. Face the camera directly, then click Capture & Verify.');
     }
   });
 

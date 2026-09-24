@@ -31,21 +31,21 @@
 <body>
   <main class="card">
     <h1>Live Face Verification</h1>
-    <p>Allow camera access and face the camera directly. The uploaded profile photo is compared with the live camera face in this browser. The live image is not uploaded or saved.</p>
+    <p>Allow camera access and follow the live verification challenge. Your live face must match the uploaded profile photo. The camera image is processed locally and is not uploaded or saved.</p>
 
     <div class="video-wrap">
       <video id="video" autoplay muted playsinline></video>
     </div>
 
     <div id="status" class="status busy">Loading face-verification models...</div>
-    <div class="meter"><strong>Requirement:</strong> exactly one face, live camera image, and a sufficiently close facial match to the uploaded profile photo.</div>
+    <div id="challengeMeter" class="meter"><strong>Requirement:</strong> exactly one face, face recognition match, and a live-person challenge. You will be asked to blink and move your head.</div>
 
     <div class="actions">
       <button id="cancel" type="button">Cancel</button>
-      <button id="capture" type="button" disabled>Capture &amp; Verify</button>
+      <button id="capture" type="button" disabled>Start Live Verification</button>
     </div>
 
-    <div class="small">Face recognition is performed locally in this page. This is identity matching, not a guarantee of perfect anti-spoofing.</div>
+    <div class="small">Face recognition and liveness checks run locally in this page. These checks significantly reduce simple photo/screen spoofing, but no browser-only method can guarantee detection of every sophisticated replay attack.</div>
   </main>
 
 <script>
@@ -58,9 +58,15 @@
   const status = document.getElementById('status');
   const capture = document.getElementById('capture');
   const cancel = document.getElementById('cancel');
+  const challengeMeter = document.getElementById('challengeMeter');
 
   const MODEL_BASE = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js-models/master/';
   const MATCH_THRESHOLD = 0.55;
+  const LIVE_SAMPLE_THRESHOLD = 0.62;
+  const BLINK_CLOSED = 0.215;
+  const BLINK_OPEN = 0.255;
+  const HEAD_DELTA = 0.115;
+  const CHALLENGE_TIMEOUT_MS = 12000;
 
   let stream = null;
   let profilePhotoDataUrl = '';
@@ -71,6 +77,10 @@
   function setStatus(message, type) {
     status.textContent = message;
     status.className = 'status ' + (type || '');
+  }
+
+  function setChallenge(text) {
+    challengeMeter.innerHTML = '<strong>Live challenge:</strong> ' + text;
   }
 
   function stopCamera() {
@@ -87,16 +97,6 @@
     setStatus('You can close this window and return to registration.', '');
   }
 
-  function sendToOpener(message) {
-    if (!window.opener || window.opener.closed) return false;
-    try {
-      window.opener.postMessage(message, new URL(document.referrer || location.href).origin === location.origin ? location.origin : '*');
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
   async function loadModels() {
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_BASE + 'tiny_face_detector'),
@@ -106,33 +106,67 @@
     modelsReady = true;
   }
 
-  async function getSingleDescriptor(source) {
+  function distance(a, b) {
+    return faceapi.euclideanDistance(a, b);
+  }
+
+  function eyeAspectRatio(points) {
+    const a = Math.hypot(points[1].x - points[5].x, points[1].y - points[5].y);
+    const b = Math.hypot(points[2].x - points[4].x, points[2].y - points[4].y);
+    const c = Math.hypot(points[0].x - points[3].x, points[0].y - points[3].y);
+    return c ? (a + b) / (2 * c) : 0;
+  }
+
+  function getLivenessMetrics(landmarks) {
+    const positions = landmarks.positions;
+    const leftEye = positions.slice(36, 42);
+    const rightEye = positions.slice(42, 48);
+    const leftEar = eyeAspectRatio(leftEye);
+    const rightEar = eyeAspectRatio(rightEye);
+    const ear = (leftEar + rightEar) / 2;
+
+    const leftCorner = positions[36];
+    const rightCorner = positions[45];
+    const nose = positions[30];
+    const eyeWidth = Math.max(1, Math.abs(rightCorner.x - leftCorner.x));
+    const eyeCenterX = (leftCorner.x + rightCorner.x) / 2;
+    const yaw = (nose.x - eyeCenterX) / eyeWidth;
+
+    return { ear, yaw };
+  }
+
+  async function detectLiveFace(source) {
     const result = await faceapi
       .detectAllFaces(source, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.55 }))
       .withFaceLandmarks()
       .withFaceDescriptors();
 
     if (!result.length) {
-      return { ok:false, message:'No face was detected. Please use a clear photo showing your full face.' };
+      return { ok:false, message:'No face was detected. Keep your face visible and move closer.' };
     }
-
     if (result.length > 1) {
       return { ok:false, message:'More than one face was detected. Only one person is allowed.' };
     }
 
-    const detection = result[0].detection;
+    const item = result[0];
+    const detection = item.detection;
     if (!detection || detection.score < 0.55) {
-      return { ok:false, message:'The face could not be detected clearly enough. Move closer and use better lighting.' };
+      return { ok:false, message:'Your face is not clear enough. Improve the lighting and face the camera.' };
     }
 
     const box = detection.box;
     const area = Math.max(1, box.width * box.height);
     const imageArea = Math.max(1, source.videoWidth ? source.videoWidth * source.videoHeight : source.width * source.height);
     if (area / imageArea < 0.035) {
-      return { ok:false, message:'Your face is too small in the image. Move closer to the camera.' };
+      return { ok:false, message:'Your face is too small. Move closer to the camera.' };
     }
 
-    return { ok:true, descriptor:result[0].descriptor };
+    return {
+      ok:true,
+      descriptor:item.descriptor,
+      landmarks:item.landmarks,
+      metrics:getLivenessMetrics(item.landmarks)
+    };
   }
 
   async function loadProfilePhoto(dataUrl) {
@@ -148,7 +182,7 @@
       img.onerror = () => reject(new Error('The uploaded profile photo could not be decoded.'));
     });
 
-    const check = await getSingleDescriptor(img);
+    const check = await detectLiveFace(img);
     if (!check.ok) throw new Error(check.message);
     profileDescriptor = check.descriptor;
   }
@@ -171,11 +205,12 @@
       });
       video.srcObject = stream;
       await video.play();
-      capture.disabled = !(modelsReady && profileDescriptor);
-      if (modelsReady && profileDescriptor) {
-        setStatus('Camera ready. Face the camera directly, then click Capture & Verify.');
+      capture.disabled = !(modelsReady && profileDescriptor && video.videoWidth);
+      if (capture.disabled) {
+        setStatus('Camera ready. Finishing face-verification setup...', 'busy');
       } else {
-        setStatus('Camera ready. Finishing face verification setup...', 'busy');
+        setStatus('Ready. Click Start Live Verification and follow the challenge.', 'success');
+        setChallenge('Click Start Live Verification.');
       }
     } catch (err) {
       capture.disabled = true;
@@ -190,52 +225,147 @@
     }
   }
 
+  function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async function collectLiveness(challenge) {
+    const deadline = Date.now() + CHALLENGE_TIMEOUT_MS;
+    let blinkCount = 0;
+    let eyesClosed = false;
+    let baselineYaw = null;
+    let movedPositive = false;
+    let movedNegative = false;
+    let samples = 0;
+    let matchingSamples = 0;
+
+    while (Date.now() < deadline) {
+      const result = await detectLiveFace(video);
+      if (!result.ok) {
+        setStatus(result.message, 'error');
+        await wait(180);
+        continue;
+      }
+
+      const d = distance(profileDescriptor, result.descriptor);
+      samples++;
+      if (d <= LIVE_SAMPLE_THRESHOLD) matchingSamples++;
+
+      if (baselineYaw === null) baselineYaw = result.metrics.yaw;
+      const delta = result.metrics.yaw - baselineYaw;
+
+      if (challenge === 'blink') {
+        if (!eyesClosed && result.metrics.ear < BLINK_CLOSED) {
+          eyesClosed = true;
+        } else if (eyesClosed && result.metrics.ear > BLINK_OPEN) {
+          blinkCount++;
+          eyesClosed = false;
+          setStatus('Blink detected: ' + blinkCount + '/2', 'busy');
+          if (blinkCount >= 2) return { ok:true, samples, matchingSamples };
+        }
+      } else if (challenge === 'move') {
+        if (delta > HEAD_DELTA) movedPositive = true;
+        if (delta < -HEAD_DELTA) movedNegative = true;
+        if (movedPositive && movedNegative) return { ok:true, samples, matchingSamples };
+      }
+
+      await wait(140);
+    }
+
+    if (samples < 3 || matchingSamples / Math.max(1, samples) < 0.60) {
+      return { ok:false, message:'The live face could not be tracked consistently. Please face the camera and try again.' };
+    }
+
+    return { ok:false, message: challenge === 'blink' ? 'The required two blinks were not detected. Please try again.' : 'The required head movement was not detected. Please turn your head naturally to both sides.' };
+  }
+
+  async function runLivenessChallenge() {
+    const challenges = Math.random() < 0.5 ? ['blink', 'move'] : ['move', 'blink'];
+
+    for (let i = 0; i < challenges.length; i++) {
+      if (challenges[i] === 'blink') {
+        setChallenge('Blink naturally twice.');
+        setStatus('Liveness check 1/2: blink twice.', 'busy');
+      } else {
+        setChallenge('Slowly turn your head to both sides.');
+        setStatus('Liveness check 2/2: turn your head left and right.', 'busy');
+      }
+
+      const result = await collectLiveness(challenges[i]);
+      if (!result.ok) return result;
+    }
+
+    return { ok:true };
+  }
+
+  async function verifyIdentity() {
+    const distances = [];
+    for (let i = 0; i < 4; i++) {
+      const result = await detectLiveFace(video);
+      if (!result.ok) throw new Error(result.message);
+      distances.push(distance(profileDescriptor, result.descriptor));
+      if (i < 3) await wait(250);
+    }
+
+    const matched = distances.filter(d => d <= MATCH_THRESHOLD).length;
+    const average = distances.reduce((a,b) => a+b, 0) / distances.length;
+    const minimum = Math.min.apply(null, distances);
+
+    if (matched < 3 || average > MATCH_THRESHOLD || minimum > LIVE_SAMPLE_THRESHOLD) {
+      throw new Error('Face recognition failed. The live face does not match the uploaded profile photo closely enough.');
+    }
+
+    return average;
+  }
+
   async function verifyLiveFace() {
     if (busy) return;
-    if (!modelsReady) { setStatus('Face-verification models are still loading. Please wait a moment.', 'error'); return; }
-    if (!profileDescriptor) { setStatus('The uploaded profile photo is not ready yet. Please wait a moment.', 'error'); return; }
-    if (!video.videoWidth) { setStatus('Camera is not ready yet. Please wait a moment.', 'error'); return; }
+    if (!modelsReady) {
+      setStatus('Face-verification models are still loading. Please wait a moment.', 'error');
+      return;
+    }
+    if (!profileDescriptor) {
+      setStatus('The uploaded profile photo is not ready yet. Please wait a moment.', 'error');
+      return;
+    }
+    if (!video.videoWidth) {
+      setStatus('Camera is not ready yet. Please wait a moment.', 'error');
+      return;
+    }
 
     busy = true;
     capture.disabled = true;
-    setStatus('Comparing the live face with the uploaded profile photo...', 'busy');
 
     try {
-      const distances = [];
-      // Capture three consecutive live samples. Requiring repeated agreement makes a single bad frame less likely to pass.
-      for (let i = 0; i < 3; i++) {
-        const result = await getSingleDescriptor(video);
-        if (!result.ok) throw new Error(result.message);
-        distances.push(faceapi.euclideanDistance(profileDescriptor, result.descriptor));
-        if (i < 2) await new Promise(resolve => setTimeout(resolve, 350));
-      }
+      setChallenge('Follow the instructions shown here.');
+      const live = await runLivenessChallenge();
+      if (!live.ok) throw new Error(live.message);
 
-      const matched = distances.filter(d => d <= MATCH_THRESHOLD).length;
-      const average = distances.reduce((a,b) => a+b, 0) / distances.length;
-
-      if (matched < 2 || average > MATCH_THRESHOLD) {
-        setStatus('Verification failed. The live camera face does not match the uploaded profile photo closely enough. If the photo is anime/cartoon or belongs to another person, upload a real photo of yourself.', 'error');
-        capture.disabled = false;
-        return;
-      }
+      setChallenge('Liveness passed. Checking identity...');
+      setStatus('Liveness passed. Comparing the live face with the uploaded profile photo...', 'busy');
+      const average = await verifyIdentity();
 
       stopCamera();
-      setStatus('Face verification passed. Returning to registration...', 'success');
+      setChallenge('Verification passed.');
+      setStatus('Face recognition and liveness verification passed. Returning to registration...', 'success');
 
       if (window.opener && !window.opener.closed) {
+        const targetOrigin = new URL(document.referrer || location.href).origin;
         window.opener.postMessage({
           type:'JPS_CAMERA_CONFIRMED',
           nonce:nonce,
           match:true,
+          liveness:true,
           distance:Number(average.toFixed(4)),
           timestamp:Date.now()
-        }, '*');
-        setTimeout(() => window.close(), 500);
+        }, targetOrigin === location.origin ? '*' : targetOrigin);
+        setTimeout(() => window.close(), 700);
       } else {
         setStatus('Verification passed, but the registration window could not be reached. Please close this window and retry.', 'error');
       }
     } catch (err) {
-      setStatus(err && err.message ? err.message : 'Face verification failed. Please try again with better lighting.', 'error');
+      setChallenge('Verification did not pass. Click Start Live Verification to retry.');
+      setStatus(err && err.message ? err.message : 'Verification failed. Please try again.', 'error');
       capture.disabled = false;
     } finally {
       busy = false;
@@ -255,7 +385,10 @@
       setStatus('Profile photo loaded. Starting the live camera...', 'busy');
       if (!stream) await startCamera();
       capture.disabled = !(modelsReady && profileDescriptor && video.videoWidth);
-      if (!capture.disabled) setStatus('Ready. Face the camera directly, then click Capture & Verify.');
+      if (!capture.disabled) {
+        setStatus('Ready. Click Start Live Verification and follow the challenge.', 'success');
+        setChallenge('Click Start Live Verification.');
+      }
     } catch (err) {
       capture.disabled = true;
       setStatus(err && err.message ? err.message : 'The uploaded profile photo could not be verified.', 'error');
@@ -265,10 +398,12 @@
   video.addEventListener('loadedmetadata', function () {
     if (modelsReady && profileDescriptor && stream) {
       capture.disabled = false;
-      setStatus('Ready. Face the camera directly, then click Capture & Verify.');
+      setStatus('Ready. Click Start Live Verification and follow the challenge.', 'success');
+      setChallenge('Click Start Live Verification.');
     }
   });
 
+  capture.addEventListener('click', verifyLiveFace);
   cancel.addEventListener('click', closePage);
   window.addEventListener('beforeunload', stopCamera);
 

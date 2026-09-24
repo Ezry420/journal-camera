@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Journal Proposal - Camera Confirmation</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin:0; min-height:100%; font-family:Arial,Helvetica,sans-serif; background:#f7f3fc; color:#1f2937; }
+    body { display:flex; align-items:center; justify-content:center; padding:18px; }
+    .card { width:min(520px,100%); background:#fff; border-radius:18px; padding:20px; box-shadow:0 20px 60px rgba(15,23,42,.14); }
+    h1 { margin:0 0 6px; font-size:21px; color:#4b3b63; }
+    p { margin:0 0 15px; color:#64748b; font-size:13px; line-height:1.5; }
+    .video-wrap { position:relative; width:100%; aspect-ratio:4/3; overflow:hidden; border-radius:14px; background:#111; }
+    video, canvas { width:100%; height:100%; object-fit:cover; display:block; }
+    canvas { display:none; }
+    .status { min-height:20px; margin-top:10px; font-size:12px; font-weight:700; }
+    .status.error { color:#b42318; }
+    .status.success { color:#18794e; }
+    .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+    button { border:0; border-radius:9px; padding:10px 14px; font-weight:700; cursor:pointer; }
+    #capture { background:#7c5bb3; color:#fff; }
+    #cancel { background:#eee9f5; color:#554665; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .small { margin-top:10px; font-size:11px; color:#7b7287; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Camera Confirmation</h1>
+    <p>Allow camera access, face the camera directly, and capture a live image. The captured image is used only for confirmation and is not uploaded or saved.</p>
+
+    <div class="video-wrap">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="status" class="status">Starting camera...</div>
+
+    <div class="actions">
+      <button id="cancel" type="button">Cancel</button>
+      <button id="capture" type="button" disabled>Capture &amp; Confirm</button>
+    </div>
+
+    <div class="small">For privacy, this page does not store the live camera image.</div>
+  </main>
+
+<script>
+(function () {
+  'use strict';
+
+  const params = new URLSearchParams(location.search);
+  const nonce = params.get('nonce') || '';
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const status = document.getElementById('status');
+  const capture = document.getElementById('capture');
+  const cancel = document.getElementById('cancel');
+  let stream = null;
+
+  function setStatus(message, type) {
+    status.textContent = message;
+    status.className = 'status ' + (type || '');
+  }
+
+  function stopCamera() {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+    video.srcObject = null;
+  }
+
+  function closePage() {
+    stopCamera();
+    try { window.close(); } catch (e) {}
+    setStatus('You can close this window and return to the registration page.', '');
+  }
+
+  async function checkOneFace(source) {
+    if (typeof window.FaceDetector === 'undefined') {
+      return { supported:false, ok:true };
+    }
+
+    try {
+      if (source.decode) await source.decode();
+      const detector = new FaceDetector({ fastMode:true, maxDetectedFaces:2 });
+      const faces = await detector.detect(source);
+      if (faces.length === 0) {
+        return { supported:true, ok:false, message:'No face was detected. Face the camera directly and try again.' };
+      }
+      if (faces.length > 1) {
+        return { supported:true, ok:false, message:'More than one face was detected. Only one person should be visible.' };
+      }
+      return { supported:true, ok:true };
+    } catch (e) {
+      return { supported:false, ok:true };
+    }
+  }
+
+  async function startCamera() {
+    if (!nonce) {
+      setStatus('This camera confirmation link is invalid.', 'error');
+      return;
+    }
+
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('Camera access requires a secure HTTPS page and a supported browser.', 'error');
+      return;
+    }
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode:'user', width:{ideal:720}, height:{ideal:540} },
+        audio:false
+      });
+      video.srcObject = stream;
+      await video.play();
+      capture.disabled = false;
+      setStatus('Camera ready. Face the camera directly, then capture.');
+    } catch (err) {
+      capture.disabled = true;
+      const name = err && err.name ? err.name : '';
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        setStatus('Camera permission was denied. Allow camera access for this site, then reopen the confirmation window.', 'error');
+      } else if (name === 'NotFoundError') {
+        setStatus('No camera was found on this device.', 'error');
+      } else {
+        setStatus('Camera access is unavailable. Please check the browser camera permission and try again.', 'error');
+      }
+    }
+  }
+
+  async function confirmCamera() {
+    if (!video.videoWidth || !video.videoHeight) {
+      setStatus('Camera is not ready yet.', 'error');
+      return;
+    }
+
+    capture.disabled = true;
+    setStatus('Checking the live camera image...');
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently:false });
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const faceCheck = await checkOneFace(canvas);
+    if (faceCheck.supported && !faceCheck.ok) {
+      capture.disabled = false;
+      setStatus(faceCheck.message || 'Please make sure exactly one face is visible.', 'error');
+      return;
+    }
+
+    stopCamera();
+    setStatus('Camera confirmation completed. Returning to registration...', 'success');
+
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({
+        type:'JPS_CAMERA_CONFIRMED',
+        nonce:nonce,
+        timestamp:Date.now()
+      }, '*');
+      setTimeout(() => window.close(), 350);
+    } else {
+      setStatus('Confirmation completed, but the registration window could not be reached. Please close this window and retry.', 'error');
+    }
+  }
+
+  capture.addEventListener('click', confirmCamera);
+  cancel.addEventListener('click', closePage);
+  window.addEventListener('beforeunload', stopCamera);
+  startCamera();
+})();
+</script>
+</body>
+</html>

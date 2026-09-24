@@ -436,7 +436,16 @@
       await loadModels();
       setStatus('Models ready. Waiting for the uploaded profile photo...', 'busy');
       if (window.opener && !window.opener.closed) {
-        window.opener.postMessage({ type:'JPS_CAMERA_READY', nonce:nonce }, '*');
+        // Send the ready signal more than once so a slow opener/load sequence
+        // does not leave the camera page waiting forever.
+        let attempts = 0;
+        const sendReady = () => {
+          if (!window.opener || window.opener.closed || attempts >= 8) return;
+          attempts++;
+          window.opener.postMessage({ type:'JPS_CAMERA_READY', nonce:nonce }, '*');
+          if (attempts < 8) setTimeout(sendReady, 700);
+        };
+        sendReady();
       } else {
         setStatus('Please open this page from the Journal Proposal registration form.', 'error');
       }

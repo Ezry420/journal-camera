@@ -81,11 +81,11 @@
   const MODEL_BASE = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js-models/master/';
   // Mobile cameras and different lighting can produce slightly different
   // descriptors for the same person, so use a slightly more tolerant face-match threshold.
-  const MATCH_THRESHOLD = 0.60;
-  const LIVE_SAMPLE_THRESHOLD = 0.66;
+  const MATCH_THRESHOLD = 0.68;
+  const LIVE_SAMPLE_THRESHOLD = 0.72;
   // Separate detection thresholds for uploaded profile photos and live camera frames.
   const PROFILE_DETECT_SCORE = 0.40;
-  const LIVE_DETECT_SCORE = 0.50;
+  const LIVE_DETECT_SCORE = 0.35;
 
   let stream = null;
   let profilePhotoDataUrl = '';
@@ -132,7 +132,7 @@
   async function detectLiveFace(source, options) {
     const isProfile = !!(options && options.profile);
     const scoreThreshold = isProfile ? PROFILE_DETECT_SCORE : LIVE_DETECT_SCORE;
-    const inputSize = isProfile ? 320 : 224;
+    const inputSize = isProfile ? 320 : 320;
 
     const result = await faceapi
       .detectAllFaces(
@@ -254,20 +254,24 @@
     const distances = [];
 
     // Multiple short samples reduce false failures caused by one blurred frame.
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 7; i++) {
       const result = await detectLiveFace(video, { profile:false });
       if (!result.ok) throw new Error(result.message);
 
       distances.push(distance(profileDescriptor, result.descriptor));
-      if (i < 4) await wait(120);
+      if (i < 6) await wait(140);
     }
 
     const sorted = distances.slice().sort((a, b) => a - b);
     const average = distances.reduce((a, b) => a + b, 0) / distances.length;
     const median = sorted[Math.floor(sorted.length / 2)];
     const matched = distances.filter(d => d <= MATCH_THRESHOLD).length;
+    // Ignore the two worst transient frames (blink/blur/motion) when calculating
+    // the final average, while still requiring most samples to match.
+    const goodSamples = sorted.slice(0, 5);
+    const stableAverage = goodSamples.reduce((a, b) => a + b, 0) / goodSamples.length;
 
-    if (matched < 3 || average > MATCH_THRESHOLD || median > LIVE_SAMPLE_THRESHOLD) {
+    if (matched < 4 || stableAverage > MATCH_THRESHOLD || median > LIVE_SAMPLE_THRESHOLD) {
       throw new Error(
         'Face recognition failed. The live face does not match the uploaded profile photo closely enough. ' +
         'Please face the camera in good lighting and try again.'

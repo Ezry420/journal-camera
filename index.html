@@ -1,1813 +1,502 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
-  >
-
-  <title>Journal Proposal System - Face Verification</title>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Journal Proposal - Face Verification</title>
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-
   <style>
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
+    * { box-sizing: border-box; }
+    html, body { margin:0; min-height:100%; font-family:Arial,Helvetica,sans-serif; background:#f7f3fc; color:#1f2937; }
+    body { display:flex; align-items:center; justify-content:center; min-height:100dvh; padding:clamp(8px,2vw,18px); }
+    .card { width:min(540px,100%); max-height:calc(100dvh - 16px); overflow:auto; background:#fff; border-radius:18px; padding:clamp(14px,3vw,20px); box-shadow:0 20px 60px rgba(15,23,42,.14); }
+    h1 { margin:0 0 6px; font-size:21px; color:#4b3b63; }
+    p { margin:0 0 15px; color:#64748b; font-size:13px; line-height:1.5; }
+    .video-wrap { position:relative; width:100%; aspect-ratio:4/3; overflow:hidden; border-radius:14px; background:#111; }
+    video { width:100%; height:100%; object-fit:cover; display:block; transform:scaleX(-1); }
+    .status { min-height:20px; margin-top:10px; font-size:12px; font-weight:700; line-height:1.45; }
+    .status.error { color:#b42318; }
+    .status.success { color:#18794e; }
+    .status.busy { color:#5b4a72; }
+    .actions { display:grid; grid-template-columns:1fr 1.5fr; gap:8px; margin-top:14px; }
+    button { min-height:44px; border:0; border-radius:9px; padding:10px 14px; font-size:13px; touch-action:manipulation; font-weight:700; cursor:pointer; }
+    #capture { background:#7c5bb3; color:#fff; }
+    #cancel { background:#eee9f5; color:#554665; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .small { margin-top:10px; font-size:11px; color:#7b7287; }
+    .meter { margin-top:12px; padding:10px 12px; border-radius:10px; background:#f6f2fb; font-size:12px; color:#5b4a72; }
+    .meter strong { color:#3f3150; }
+
+    @media (max-width: 560px) {
+      .card { border-radius:14px; }
+      h1 { font-size:19px; }
+      p { font-size:12px; }
+      .video-wrap { aspect-ratio:3/4; max-height:58dvh; }
+      .actions { grid-template-columns:1fr; }
+      button { width:100%; }
+      .meter { font-size:11px; }
     }
 
-    html,
-    body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      min-height: 100%;
-      font-family: Arial, Helvetica, sans-serif;
-      background: #f4f1ff;
-      color: #222;
-    }
-
-    body {
-      min-height: 100dvh;
-      padding:
-        max(10px, env(safe-area-inset-top))
-        max(10px, env(safe-area-inset-right))
-        max(10px, env(safe-area-inset-bottom))
-        max(10px, env(safe-area-inset-left));
-
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .app {
-      width: 100%;
-      max-width: 560px;
-      background: #fff;
-      border-radius: 22px;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, .10);
-      overflow: hidden;
-    }
-
-    .header {
-      padding: 18px 18px 13px;
-      text-align: center;
-    }
-
-    .header h1 {
-      margin: 0;
-      font-size: 22px;
-      line-height: 1.2;
-      color: #5b3cc4;
-    }
-
-    .header p {
-      margin: 7px auto 0;
-      max-width: 450px;
-      font-size: 13px;
-      line-height: 1.45;
-      color: #666;
-    }
-
-    .status {
-      margin: 0 14px;
-      padding: 11px 14px;
-      min-height: 44px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      border-radius: 12px;
-      background: #f1eeff;
-      color: #5b3cc4;
-      font-size: 13px;
-      line-height: 1.4;
-    }
-
-    .status.success {
-      background: #eaf8ef;
-      color: #16803c;
-    }
-
-    .status.error {
-      background: #fff0f0;
-      color: #c62828;
-    }
-
-    .status.warning {
-      background: #fff8e6;
-      color: #916800;
-    }
-
-    .camera-area {
-      position: relative;
-      min-height: 300px;
-      margin: 14px;
-      background: #111;
-      border-radius: 18px;
-      overflow: hidden;
-    }
-
-    #video {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      background: #111;
-      display: block;
-      transform: scaleX(-1);
-    }
-
-    .camera-placeholder {
-      position: absolute;
-      inset: 0;
-      z-index: 2;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 25px;
-      text-align: center;
-      color: #fff;
-      background: rgba(0, 0, 0, .72);
-      transition: opacity .2s ease;
-    }
-
-    .camera-placeholder.hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .camera-icon {
-      font-size: 40px;
-      margin-bottom: 10px;
-    }
-
-    .camera-placeholder-title {
-      font-size: 16px;
-      font-weight: bold;
-    }
-
-    .camera-placeholder-text {
-      margin-top: 6px;
-      max-width: 300px;
-      font-size: 12px;
-      line-height: 1.45;
-      opacity: .85;
-    }
-
-    .face-guide {
-      position: absolute;
-      z-index: 3;
-      left: 50%;
-      top: 50%;
-      width: min(68%, 290px);
-      height: min(72%, 390px);
-      transform: translate(-50%, -50%);
-      border: 3px solid rgba(255,255,255,.88);
-      border-radius: 50%;
-      pointer-events: none;
-      box-shadow: 0 0 0 9999px rgba(0,0,0,.18);
-    }
-
-    .guide-status {
-      position: absolute;
-      z-index: 4;
-      left: 14px;
-      right: 14px;
-      bottom: 14px;
-      padding: 9px 12px;
-      border-radius: 10px;
-      text-align: center;
-      color: #fff;
-      background: rgba(0,0,0,.48);
-      font-size: 12px;
-      line-height: 1.35;
-      pointer-events: none;
-    }
-
-    .progress-area {
-      padding: 0 14px;
-    }
-
-    .progress-track {
-      width: 100%;
-      height: 8px;
-      border-radius: 999px;
-      background: #e8e4f5;
-      overflow: hidden;
-    }
-
-    .progress {
-      width: 0;
-      height: 100%;
-      border-radius: 999px;
-      background: #5b3cc4;
-      transition: width .15s ease;
-    }
-
-    .progress-text {
-      min-height: 18px;
-      margin-top: 4px;
-      text-align: center;
-      color: #777;
-      font-size: 11px;
-    }
-
-    .buttons {
-      display: flex;
-      gap: 9px;
-      padding: 7px 14px 14px;
-    }
-
-    button {
-      flex: 1;
-      min-height: 48px;
-      border: none;
-      border-radius: 13px;
-      padding: 11px 14px;
-      font-size: 14px;
-      font-weight: 700;
-      cursor: pointer;
-      touch-action: manipulation;
-    }
-
-    button:active {
-      transform: scale(.97);
-    }
-
-    button:disabled {
-      opacity: .45;
-      cursor: not-allowed;
-    }
-
-    .primary {
-      background: #5b3cc4;
-      color: #fff;
-    }
-
-    .secondary {
-      background: #eee;
-      color: #333;
-    }
-
-    .info {
-      margin: 0 14px 14px;
-      padding: 10px 12px;
-      border-radius: 11px;
-      background: #faf9ff;
-      border: 1px solid #ebe7fb;
-      color: #666;
-      font-size: 11px;
-      line-height: 1.5;
-      text-align: center;
-    }
-
-    @media (max-width: 400px) {
-      .header h1 {
-        font-size: 19px;
-      }
-
-      .header p {
-        font-size: 12px;
-      }
-
-      .camera-area {
-        min-height: 280px;
-      }
-
-      button {
-        font-size: 13px;
-        min-height: 46px;
-      }
+    @media (max-height: 650px) and (orientation:landscape) {
+      body { align-items:flex-start; }
+      .card { display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; max-width:760px; }
+      .card h1, .card > p, .card .small { grid-column:1/-1; }
+      .video-wrap { grid-row:span 3; aspect-ratio:4/3; }
+      .actions { align-self:end; }
     }
   </style>
 </head>
-
 <body>
-
-<div class="app">
-
-  <div class="header">
+  <main class="card">
     <h1>Live Face Verification</h1>
-    <p>
-      Your uploaded profile photo will be used as the reference face.
-    </p>
-  </div>
+    <p>Allow camera access. Your live face will be compared with the uploaded profile photo. The camera image is processed locally and is not uploaded or saved.</p>
 
-  <div id="status" class="status">
-    Starting verification system...
-  </div>
-
-  <div class="camera-area">
-
-    <video
-      id="video"
-      autoplay
-      muted
-      playsinline>
-    </video>
-
-    <div
-      id="cameraPlaceholder"
-      class="camera-placeholder">
-
-      <div class="camera-icon">📷</div>
-
-      <div class="camera-placeholder-title">
-        Camera ready
-      </div>
-
-      <div class="camera-placeholder-text">
-        Start live verification after your profile photo has been checked.
-      </div>
-
+    <div class="video-wrap">
+      <video id="video" autoplay muted playsinline></video>
     </div>
 
-    <div class="face-guide"></div>
+    <div id="status" class="status busy">Loading face-verification models...</div>
+    <div id="challengeMeter" class="meter"><strong>Requirement:</strong> exactly one live face and a face-recognition match with your uploaded profile photo.</div>
 
-    <div id="guideStatus" class="guide-status">
-      Waiting for camera...
+    <div class="actions">
+      <button id="cancel" type="button">Cancel</button>
+      <button id="capture" type="button" disabled>Start Live Verification</button>
     </div>
 
-  </div>
-
-  <div class="progress-area">
-
-    <div class="progress-track">
-      <div id="progress" class="progress"></div>
-    </div>
-
-    <div id="progressText" class="progress-text">
-      Waiting...
-    </div>
-
-  </div>
-
-  <div class="buttons">
-
-    <button
-      id="startBtn"
-      class="primary"
-      type="button"
-      disabled>
-      Start Live Verification
-    </button>
-
-    <button
-      id="cancelBtn"
-      class="secondary"
-      type="button">
-      Cancel
-    </button>
-
-  </div>
-
-  <div class="info">
-    <b>Face verification only.</b>
-    No blink or head-turn challenge is required.
-    Keep your face centered and use good lighting.
-  </div>
-
-</div>
-
+    <div class="small">Face recognition runs locally in this page. The camera image is not uploaded or saved.</div>
+  </main>
 
 <script>
-
-/* ============================================================
-   CONFIGURATION
-   ============================================================ */
-
-const MODEL_URL =
-  "https://raw.githubusercontent.com/justadudewhohacks/face-api.js-models/master/";
-
-/*
- * face-api.js distance:
- * LOWER = closer match.
- */
-const MATCH_THRESHOLD = 0.86;
-
-/*
- * Average of the best live samples.
- */
-const BEST_AVERAGE_THRESHOLD = 0.90;
-
-/*
- * Only 5 live samples.
- */
-const TOTAL_SAMPLES = 5;
-
-/*
- * Minimum samples required.
- */
-const MIN_USABLE_SAMPLES = 3;
-
-/*
- * Minimum matching samples.
- */
-const MIN_GOOD_MATCHES = 2;
-
-/*
- * Profile image is reduced before recognition.
- */
-const MAX_PROFILE_DIMENSION = 400;
-
-/*
- * Faster mobile detector.
- */
-const PROFILE_DETECT_SCORE = 0.30;
-const LIVE_DETECT_SCORE = 0.25;
-
-
-/* ============================================================
-   ELEMENTS
-   ============================================================ */
-
-const video =
-  document.getElementById("video");
-
-const statusEl =
-  document.getElementById("status");
-
-const progressEl =
-  document.getElementById("progress");
-
-const progressTextEl =
-  document.getElementById("progressText");
-
-const startBtn =
-  document.getElementById("startBtn");
-
-const cancelBtn =
-  document.getElementById("cancelBtn");
-
-const guideStatus =
-  document.getElementById("guideStatus");
-
-const cameraPlaceholder =
-  document.getElementById("cameraPlaceholder");
-
-
-/* ============================================================
-   STATE
-   ============================================================ */
-
-let stream = null;
-
-let cameraStarted = false;
-
-let verificationRunning = false;
-
-let modelsLoaded = false;
-
-let profilePhotoDataUrl = null;
-
-let profileDescriptor = null;
-
-let profileProcessing = false;
-
-let nonce = null;
-
-
-/* ============================================================
-   NONCE
-   ============================================================ */
-
-try {
-
-  const params =
-    new URLSearchParams(
-      window.location.search
-    );
-
-  nonce =
-    params.get("nonce");
-
-} catch (error) {
-
-  console.warn("Nonce error:", error);
-
-}
-
-
-/* ============================================================
-   STATUS
-   ============================================================ */
-
-function setStatus(message, type = "") {
-
-  statusEl.textContent = message;
-
-  statusEl.className = "status";
-
-  if (type) {
-    statusEl.classList.add(type);
-  }
-
-}
-
-
-/* ============================================================
-   GUIDE
-   ============================================================ */
-
-function setGuide(message) {
-
-  guideStatus.textContent = message;
-
-}
-
-
-/* ============================================================
-   PROGRESS
-   ============================================================ */
-
-function setProgress(percent, message) {
-
-  percent =
-    Math.max(
-      0,
-      Math.min(
-        100,
-        percent
-      )
-    );
-
-  progressEl.style.width =
-    percent + "%";
-
-  if (message !== undefined) {
-
-    progressTextEl.textContent =
-      message;
-
-  }
-
-}
-
-
-/* ============================================================
-   SEND TO INDEX.HTML
-   ============================================================ */
-
-function sendToParent(data) {
-
-  try {
-
-    if (!window.opener) {
-
-      console.warn(
-        "window.opener is unavailable."
-      );
-
-      return false;
-
-    }
-
-    window.opener.postMessage(
-      data,
-      "*"
-    );
-
-    return true;
-
-  } catch (error) {
-
-    console.error(
-      "postMessage error:",
-      error
-    );
-
-    return false;
-
-  }
-
-}
-
-
-/* ============================================================
-   CAMERA READY
-   ============================================================ */
-
-function sendReady() {
-
-  sendToParent({
-
-    type:
-      "JPS_CAMERA_READY",
-
-    nonce:
-      nonce
-
-  });
-
-}
-
-
-/* ============================================================
-   PROFILE RECEIVED
-   ============================================================ */
-
-function sendProfileReceived() {
-
-  sendToParent({
-
-    type:
-      "JPS_PROFILE_RECEIVED",
-
-    nonce:
-      nonce
-
-  });
-
-}
-
-
-/* ============================================================
-   VERIFIED
-   ============================================================ */
-
-function sendConfirmed(distance, details) {
-
-  sendToParent({
-
-    type:
-      "JPS_CAMERA_CONFIRMED",
-
-    nonce:
-      nonce,
-
-    verified:
-      true,
-
-    match:
-      true,
-
-    distance:
-      distance,
-
-    timestamp:
-      Date.now(),
-
-    blink:
-      false,
-
-    details:
-      details || {}
-
-  });
-
-}
-
-
-/* ============================================================
-   FAILED
-   ============================================================ */
-
-function sendFailed(distance, details) {
-
-  sendToParent({
-
-    type:
-      "JPS_CAMERA_CONFIRMED",
-
-    nonce:
-      nonce,
-
-    verified:
-      false,
-
-    match:
-      false,
-
-    distance:
-      distance,
-
-    timestamp:
-      Date.now(),
-
-    blink:
-      false,
-
-    details:
-      details || {}
-
-  });
-
-}
-
-
-/* ============================================================
-   LOAD MODELS
-   ============================================================ */
-
-async function loadModels() {
-
-  try {
-
-    setStatus(
-      "Loading face verification system..."
-    );
-
-    setGuide(
-      "Preparing face verification..."
-    );
-
-    setProgress(
-      10,
-      "Loading face detector..."
-    );
-
-
-    await faceapi.nets.tinyFaceDetector.loadFromUri(
-      MODEL_URL
-    );
-
-
-    setProgress(
-      45,
-      "Loading facial landmarks..."
-    );
-
-
-    await faceapi.nets.faceLandmark68Net.loadFromUri(
-      MODEL_URL
-    );
-
-
-    setProgress(
-      75,
-      "Loading face recognition..."
-    );
-
-
-    await faceapi.nets.faceRecognitionNet.loadFromUri(
-      MODEL_URL
-    );
-
-
-    modelsLoaded = true;
-
-
-    setProgress(
-      100,
-      "Face system ready."
-    );
-
-
-    if (
-      profilePhotoDataUrl &&
-      !profileDescriptor
-    ) {
-
-      await prepareProfilePhoto();
-
-    } else {
-
-      setStatus(
-        "Waiting for your uploaded profile photo.",
-        "success"
-      );
-
-      setGuide(
-        "Waiting for profile photo..."
-      );
-
-    }
-
-  } catch (error) {
-
-    console.error(
-      "Model loading error:",
-      error
-    );
-
-    modelsLoaded = false;
-
-    setProgress(
-      0,
-      "Face system could not be loaded."
-    );
-
-    setStatus(
-      "Unable to load face verification. Please reload the page.",
-      "error"
-    );
-
-    setGuide(
-      "Face verification unavailable"
-    );
-
-  }
-
-}
-
-
-/* ============================================================
-   LOAD IMAGE
-   ============================================================ */
-
-function loadImage(dataUrl) {
-
-  return new Promise(
-    (resolve, reject) => {
-
-      const image =
-        new Image();
-
-      image.onload = () => {
-
-        resolve(image);
-
-      };
-
-      image.onerror = () => {
-
-        reject(
-          new Error(
-            "The uploaded profile photo could not be opened."
-          )
-        );
-
-      };
-
-      image.src = dataUrl;
-
-    }
-  );
-
-}
-
-
-/* ============================================================
-   RESIZE PROFILE IMAGE
-   ============================================================ */
-
-function resizeProfileImage(image) {
-
-  const width =
-    image.naturalWidth ||
-    image.width;
-
-  const height =
-    image.naturalHeight ||
-    image.height;
-
-
-  if (!width || !height) {
-
-    throw new Error(
-      "Invalid profile photo."
-    );
-
-  }
-
-
-  const scale =
-    Math.min(
-      1,
-      MAX_PROFILE_DIMENSION / width,
-      MAX_PROFILE_DIMENSION / height
-    );
-
-
-  const newWidth =
-    Math.round(
-      width * scale
-    );
-
-  const newHeight =
-    Math.round(
-      height * scale
-    );
-
-
-  if (
-    newWidth === width &&
-    newHeight === height
-  ) {
-
-    return image;
-
-  }
-
-
-  const canvas =
-    document.createElement("canvas");
-
-  canvas.width =
-    newWidth;
-
-  canvas.height =
-    newHeight;
-
-
-  const context =
-    canvas.getContext("2d");
-
-
-  context.drawImage(
-    image,
-    0,
-    0,
-    newWidth,
-    newHeight
-  );
-
-
-  return canvas;
-
-}
-
-
-/* ============================================================
-   DETECT PROFILE FACE
-   ============================================================ */
-
-async function detectProfileFace(image) {
-
-  const options =
-    new faceapi.TinyFaceDetectorOptions({
-
-      inputSize:
-        160,
-
-      scoreThreshold:
-        PROFILE_DETECT_SCORE
-
-    });
-
-
-  return faceapi
-    .detectSingleFace(
-      image,
-      options
-    )
-    .withFaceLandmarks()
-    .withFaceDescriptor();
-
-}
-
-
-/* ============================================================
-   PROCESS PROFILE PHOTO
-   ============================================================ */
-
-async function prepareProfilePhoto() {
+(function () {
+  'use strict';
+
+  const params = new URLSearchParams(location.search);
+  const nonce = params.get('nonce') || '';
+  const video = document.getElementById('video');
+  const status = document.getElementById('status');
+  const capture = document.getElementById('capture');
+  const cancel = document.getElementById('cancel');
+  const challengeMeter = document.getElementById('challengeMeter');
+
+  const MODEL_BASE = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js-models/master/';
 
   /*
-   * Do not process the same photo twice.
+   * INCREASED APPROVAL RATE
+   *
+   * face-api.js distance:
+   * lower = closer match
+   *
+   * Previous:
+   * 0.55
+   *
+   * New:
+   * 0.68
    */
-  if (profileProcessing) {
-    return;
+  const MATCH_THRESHOLD = 0.68;
+
+  /*
+   * Previous:
+   * 0.62
+   *
+   * New:
+   * 0.75
+   */
+  const LIVE_SAMPLE_THRESHOLD = 0.75;
+
+  let stream = null;
+  let profilePhotoDataUrl = '';
+  let profileDescriptor = null;
+  let modelsReady = false;
+  let busy = false;
+
+  function setStatus(message, type) {
+    status.textContent = message;
+    status.className = 'status ' + (type || '');
   }
 
-  if (profileDescriptor) {
-    return;
+  function setChallenge(text) {
+    challengeMeter.innerHTML = '<strong>Live verification:</strong> ' + text;
   }
 
-  if (!profilePhotoDataUrl) {
-    return;
+  function stopCamera() {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+    video.srcObject = null;
   }
 
-  if (!modelsLoaded) {
-    return;
+  function closePage() {
+    stopCamera();
+    try { window.close(); } catch (e) {}
+    setStatus('You can close this window and return to registration.', '');
   }
 
+  async function loadModels() {
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_BASE + 'tiny_face_detector'),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_BASE + 'face_landmark_68'),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_BASE + 'face_recognition')
+    ]);
+    modelsReady = true;
+  }
 
-  profileProcessing = true;
+  function distance(a, b) {
+    return faceapi.euclideanDistance(a, b);
+  }
 
-  startBtn.disabled = true;
+  async function detectLiveFace(source) {
+    const result = await faceapi
+      .detectAllFaces(
+        source,
+        new faceapi.TinyFaceDetectorOptions({
+          inputSize: 224,
+          scoreThreshold: 0.55
+        })
+      )
+      .withFaceLandmarks()
+      .withFaceDescriptors();
 
-
-  try {
-
-    setStatus(
-      "Checking your uploaded profile photo..."
-    );
-
-    setGuide(
-      "Checking uploaded profile photo..."
-    );
-
-    setProgress(
-      15,
-      "Opening profile photo..."
-    );
-
-
-    const image =
-      await loadImage(
-        profilePhotoDataUrl
-      );
-
-
-    setProgress(
-      35,
-      "Preparing photo..."
-    );
-
-
-    const processingImage =
-      resizeProfileImage(
-        image
-      );
-
-
-    setProgress(
-      55,
-      "Looking for your face..."
-    );
-
-
-    const detection =
-      await detectProfileFace(
-        processingImage
-      );
-
-
-    if (!detection) {
-
-      throw new Error(
-        "No face was detected. Please upload a clear photo showing one person's face."
-      );
-
+    if (!result.length) {
+      return {
+        ok:false,
+        message:'No face was detected. Keep your face visible and move closer.'
+      };
     }
 
+    if (result.length > 1) {
+      return {
+        ok:false,
+        message:'More than one face was detected. Only one person is allowed.'
+      };
+    }
 
-    /*
-     * Store descriptor exactly once.
-     */
+    const item = result[0];
+    const detection = item.detection;
+
+    if (!detection || detection.score < 0.55) {
+      return {
+        ok:false,
+        message:'Your face is not clear enough. Improve the lighting and face the camera.'
+      };
+    }
+
+    const box = detection.box;
+    const area = Math.max(
+      1,
+      box.width * box.height
+    );
+
+    const imageArea = Math.max(
+      1,
+      source.videoWidth
+        ? source.videoWidth * source.videoHeight
+        : source.width * source.height
+    );
+
+    if (area / imageArea < 0.035) {
+      return {
+        ok:false,
+        message:'Your face is too small. Move closer to the camera.'
+      };
+    }
+
+    return {
+      ok:true,
+      descriptor:item.descriptor,
+      landmarks:item.landmarks
+    };
+  }
+
+  async function loadProfilePhoto(dataUrl) {
+    if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+      throw new Error(
+        'The uploaded profile photo could not be loaded.'
+      );
+    }
+
+    const img = new Image();
+
+    img.decoding = 'async';
+    img.src = dataUrl;
+
+    await new Promise(
+      (resolve, reject) => {
+
+        img.onload = resolve;
+
+        img.onerror = () =>
+          reject(
+            new Error(
+              'The uploaded profile photo could not be decoded.'
+            )
+          );
+
+      }
+    );
+
+    const check =
+      await detectLiveFace(img);
+
+    if (!check.ok) {
+      throw new Error(
+        check.message
+      );
+    }
+
     profileDescriptor =
-      detection.descriptor;
-
-
-    /*
-     * Release the large image reference.
-     */
-    profilePhotoDataUrl =
-      null;
-
-
-    setProgress(
-      100,
-      "Profile photo accepted."
-    );
-
-
-    setStatus(
-      "Profile photo accepted. Start live verification.",
-      "success"
-    );
-
-
-    setGuide(
-      "Tap Start Live Verification"
-    );
-
-
-    startBtn.disabled =
-      false;
-
-
-    sendProfileReceived();
-
-
-  } catch (error) {
-
-    console.error(
-      "Profile processing error:",
-      error
-    );
-
-
-    profileDescriptor =
-      null;
-
-
-    startBtn.disabled =
-      true;
-
-
-    setProgress(
-      0,
-      "Profile photo check failed."
-    );
-
-
-    setStatus(
-      error.message ||
-      "Unable to process the profile photo.",
-      "error"
-    );
-
-
-    setGuide(
-      "Please use a clear face photo and try again."
-    );
-
-
-  } finally {
-
-    profileProcessing =
-      false;
-
+      check.descriptor;
   }
 
-}
+  async function startCamera() {
 
-
-/* ============================================================
-   START CAMERA
-   ============================================================ */
-
-async function startCamera() {
-
-  if (
-    cameraStarted &&
-    stream
-  ) {
-
-    return true;
-
-  }
-
-
-  if (
-    !navigator.mediaDevices ||
-    !navigator.mediaDevices.getUserMedia
-  ) {
-
-    setStatus(
-      "This browser does not support camera access.",
-      "error"
-    );
-
-    return false;
-
-  }
-
-
-  try {
-
-    setStatus(
-      "Starting camera..."
-    );
-
-    setGuide(
-      "Starting camera..."
-    );
-
-
-    stream =
-      await navigator.mediaDevices.getUserMedia({
-
-        video: {
-
-          facingMode: {
-            ideal: "user"
-          },
-
-          width: {
-            ideal: 640
-          },
-
-          height: {
-            ideal: 480
-          }
-
-        },
-
-        audio: false
-
-      });
-
-
-    video.srcObject =
-      stream;
-
-
-    await video.play();
-
-
-    cameraStarted =
-      true;
-
-
-    cameraPlaceholder.classList.add(
-      "hidden"
-    );
-
-
-    setStatus(
-      "Camera ready. Position your face inside the circle.",
-      "success"
-    );
-
-
-    setGuide(
-      "Position your face inside the circle"
-    );
-
-
-    return true;
-
-
-  } catch (error) {
-
-    console.error(
-      "Camera error:",
-      error
-    );
-
-
-    let message =
-      "Camera access was denied or unavailable.";
-
+    if (!nonce) {
+      setStatus(
+        'This camera verification link is invalid.',
+        'error'
+      );
+      return;
+    }
 
     if (
-      error &&
-      error.name === "NotAllowedError"
+      !window.isSecureContext ||
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
     ) {
 
-      message =
-        "Camera permission was denied. Allow camera access and try again.";
+      setStatus(
+        'Camera access requires a secure HTTPS page and a supported browser.',
+        'error'
+      );
 
-    } else if (
-      error &&
-      error.name === "NotFoundError"
-    ) {
-
-      message =
-        "No camera was found on this device.";
-
-    } else if (
-      error &&
-      error.name === "NotReadableError"
-    ) {
-
-      message =
-        "The camera is currently being used by another application.";
-
+      return;
     }
-
-
-    setStatus(
-      message,
-      "error"
-    );
-
-    setGuide(
-      "Camera could not be started"
-    );
-
-
-    return false;
-
-  }
-
-}
-
-
-/* ============================================================
-   STOP CAMERA
-   ============================================================ */
-
-function stopCamera() {
-
-  if (stream) {
 
     try {
 
-      stream
-        .getTracks()
-        .forEach(
-          track => {
+      stream =
+        await navigator.mediaDevices.getUserMedia({
 
-            try {
-              track.stop();
-            } catch (_) {}
+          video: {
+            facingMode:'user',
+            width:{ideal:640},
+            height:{ideal:480}
+          },
 
-          }
-        );
+          audio:false
 
-    } catch (_) {}
+        });
 
-  }
 
+      video.srcObject =
+        stream;
 
-  stream = null;
 
-  cameraStarted = false;
+      await video.play();
 
-  video.srcObject = null;
 
-}
-
-
-/* ============================================================
-   DETECT LIVE FACE
-   ============================================================ */
-
-async function detectLiveFace() {
-
-  if (
-    !video ||
-    video.readyState < 2
-  ) {
-
-    return null;
-
-  }
-
-
-  try {
-
-    const options =
-      new faceapi.TinyFaceDetectorOptions({
-
-        inputSize:
-          160,
-
-        scoreThreshold:
-          LIVE_DETECT_SCORE
-
-      });
-
-
-    return await faceapi
-      .detectSingleFace(
-        video,
-        options
-      )
-      .withFaceLandmarks()
-      .withFaceDescriptor();
-
-
-  } catch (error) {
-
-    return null;
-
-  }
-
-}
-
-
-/* ============================================================
-   DISTANCE
-   ============================================================ */
-
-function calculateDistance(a, b) {
-
-  return faceapi.euclideanDistance(
-    a,
-    b
-  );
-
-}
-
-
-/* ============================================================
-   START VERIFICATION
-   ============================================================ */
-
-async function startVerification() {
-
-  if (verificationRunning) {
-    return;
-  }
-
-
-  if (!profileDescriptor) {
-
-    setStatus(
-      "Your profile photo is not ready yet.",
-      "warning"
-    );
-
-    return;
-
-  }
-
-
-  const cameraReady =
-    await startCamera();
-
-
-  if (!cameraReady) {
-    return;
-  }
-
-
-  verificationRunning =
-    true;
-
-  startBtn.disabled =
-    true;
-
-
-  setProgress(
-    0,
-    "Preparing verification..."
-  );
-
-
-  setStatus(
-    "Look directly at the camera and keep your face steady."
-  );
-
-  setGuide(
-    "Look at the camera"
-  );
-
-
-  /*
-   * Short camera stabilization.
-   */
-  await new Promise(
-    resolve =>
-      setTimeout(
-        resolve,
-        300
-      )
-  );
-
-
-  const distances = [];
-
-
-  /*
-   * Only a small number of attempts.
-   */
-  let attempts = 0;
-
-  const maxAttempts = 12;
-
-
-  while (
-    distances.length < TOTAL_SAMPLES &&
-    attempts < maxAttempts
-  ) {
-
-    attempts++;
-
-
-    const detection =
-      await detectLiveFace();
-
-
-    if (detection) {
-
-      const distance =
-        calculateDistance(
-          profileDescriptor,
-          detection.descriptor
+      capture.disabled =
+        !(
+          modelsReady &&
+          profileDescriptor &&
+          video.videoWidth
         );
 
 
-      if (isFinite(distance)) {
+      if (capture.disabled) {
 
-        distances.push(
-          distance
+        setStatus(
+          'Camera ready. Finishing face-verification setup...',
+          'busy'
         );
 
+      } else {
 
-        const percent =
-          Math.round(
-            (
-              distances.length /
-              TOTAL_SAMPLES
-            ) * 100
-          );
-
-
-        setProgress(
-          percent,
-          "Checking face " +
-          distances.length +
-          " of " +
-          TOTAL_SAMPLES
+        setStatus(
+          'Ready. Click Start Live Verification to verify your face.',
+          'success'
         );
 
-
-        setGuide(
-          "Face detected — stay still"
+        setChallenge(
+          'Click Start Live Verification to compare your live face.'
         );
 
       }
 
-    } else {
+    } catch (err) {
 
-      setGuide(
-        "Move your face inside the circle"
+      capture.disabled = true;
+
+      const name =
+        err && err.name
+          ? err.name
+          : '';
+
+      if (
+        name === 'NotAllowedError' ||
+        name === 'SecurityError'
+      ) {
+
+        setStatus(
+          'Camera permission was denied. Allow camera access for this site, then reopen the verification window.',
+          'error'
+        );
+
+      } else if (
+        name === 'NotFoundError'
+      ) {
+
+        setStatus(
+          'No camera was found on this device.',
+          'error'
+        );
+
+      } else {
+
+        setStatus(
+          'Camera access is unavailable. Please check the browser camera permission.',
+          'error'
+        );
+
+      }
+
+    }
+
+  }
+
+  function wait(ms) {
+    return new Promise(
+      resolve =>
+        setTimeout(
+          resolve,
+          ms
+        )
+    );
+  }
+
+  async function verifyIdentity() {
+
+    const distances = [];
+
+    /*
+     * Keep 4 samples.
+     */
+    for (
+      let i = 0;
+      i < 4;
+      i++
+    ) {
+
+      const result =
+        await detectLiveFace(
+          video
+        );
+
+
+      if (!result.ok) {
+
+        throw new Error(
+          result.message
+        );
+
+      }
+
+
+      distances.push(
+        distance(
+          profileDescriptor,
+          result.descriptor
+        )
+      );
+
+
+      if (i < 3) {
+        await wait(120);
+      }
+
+    }
+
+
+    /*
+     * More permissive approval:
+     *
+     * OLD:
+     * matched < 3
+     *
+     * NEW:
+     * matched < 2
+     *
+     * So at least 2 of 4 samples
+     * must be within MATCH_THRESHOLD.
+     */
+    const matched =
+      distances.filter(
+        d =>
+          d <= MATCH_THRESHOLD
+      ).length;
+
+
+    const average =
+      distances.reduce(
+        (a, b) =>
+          a + b,
+        0
+      ) /
+      distances.length;
+
+
+    const minimum =
+      Math.min.apply(
+        null,
+        distances
+      );
+
+
+    /*
+     * Increased approval rate.
+     */
+    if (
+      matched < 2 ||
+      average > MATCH_THRESHOLD ||
+      minimum > LIVE_SAMPLE_THRESHOLD
+    ) {
+
+      throw new Error(
+        'Face recognition failed. The live face does not match the uploaded profile photo closely enough.'
       );
 
     }
 
 
-    await new Promise(
-      resolve =>
-        setTimeout(
-          resolve,
-          100
-        )
-    );
+    return average;
 
   }
 
+  async function verifyLiveFace() {
 
-  /* ==========================================================
-     NOT ENOUGH SAMPLES
-     ========================================================== */
-
-  if (
-    distances.length <
-    MIN_USABLE_SAMPLES
-  ) {
-
-    verificationRunning =
-      false;
-
-    startBtn.disabled =
-      false;
-
-
-    setProgress(
-      0,
-      "Not enough clear samples."
-    );
-
-
-    setStatus(
-      "I couldn't get enough clear face samples. Move closer and try again.",
-      "error"
-    );
-
-
-    setGuide(
-      "Try again"
-    );
-
-
-    sendFailed(
-      null,
-      {
-        reason:
-          "not_enough_samples",
-
-        samples:
-          distances.length
-      }
-    );
-
-
-    return;
-
-  }
-
-
-  /* ==========================================================
-     SORT DISTANCES
-     ========================================================== */
-
-  const sorted =
-    [...distances].sort(
-      (a, b) =>
-        a - b
-    );
-
-
-  const bestDistance =
-    sorted[0];
-
-
-  /*
-   * Use the best 3 samples.
-   */
-  const bestSamples =
-    sorted.slice(
-      0,
-      Math.min(
-        3,
-        sorted.length
-      )
-    );
-
-
-  const bestAverage =
-    bestSamples.reduce(
-      (sum, value) =>
-        sum + value,
-      0
-    ) /
-    bestSamples.length;
-
-
-  /* ==========================================================
-     GOOD MATCHES
-     ========================================================== */
-
-  const goodMatches =
-    distances.filter(
-      distance =>
-        distance <=
-        MATCH_THRESHOLD
-    ).length;
-
-
-  const requiredMatches =
-    Math.max(
-      MIN_GOOD_MATCHES,
-      Math.ceil(
-        distances.length * 0.40
-      )
-    );
-
-
-  const enoughMatches =
-    goodMatches >=
-    requiredMatches;
-
-
-  const averagePassed =
-    bestAverage <=
-    BEST_AVERAGE_THRESHOLD;
-
-
-  const passed =
-    enoughMatches &&
-    averagePassed;
-
-
-  console.log(
-    "Face distances:",
-    distances
-  );
-
-  console.log(
-    "Best distance:",
-    bestDistance
-  );
-
-  console.log(
-    "Best average:",
-    bestAverage
-  );
-
-  console.log(
-    "Good matches:",
-    goodMatches
-  );
-
-
-  /* ==========================================================
-     PASSED
-     ========================================================== */
-
-  if (passed) {
-
-    verificationRunning =
-      false;
-
-
-    setProgress(
-      100,
-      "Verification passed!"
-    );
-
-
-    setStatus(
-      "Face verification passed successfully.",
-      "success"
-    );
-
-
-    setGuide(
-      "Verification successful"
-    );
-
-
-    sendConfirmed(
-      bestDistance,
-      {
-
-        samples:
-          distances.length,
-
-        goodMatches:
-          goodMatches,
-
-        requiredMatches:
-          requiredMatches,
-
-        bestDistance:
-          bestDistance,
-
-        bestAverage:
-          bestAverage,
-
-        threshold:
-          MATCH_THRESHOLD
-
-      }
-    );
-
-
-    setTimeout(
-      () => {
-        stopCamera();
-      },
-      500
-    );
-
-
-    return;
-
-  }
-
-
-  /* ==========================================================
-     FAILED
-     ========================================================== */
-
-  verificationRunning =
-    false;
-
-  startBtn.disabled =
-    false;
-
-
-  setProgress(
-    0,
-    "Verification did not pass."
-  );
-
-
-  setStatus(
-    "Face verification did not pass. Best distance: " +
-    bestDistance.toFixed(3) +
-    " | Matching samples: " +
-    goodMatches +
-    "/" +
-    distances.length,
-    "error"
-  );
-
-
-  setGuide(
-    "Try again with better lighting"
-  );
-
-
-  sendFailed(
-    bestDistance,
-    {
-
-      samples:
-        distances.length,
-
-      goodMatches:
-        goodMatches,
-
-      requiredMatches:
-        requiredMatches,
-
-      bestDistance:
-        bestDistance,
-
-      bestAverage:
-        bestAverage,
-
-      threshold:
-        MATCH_THRESHOLD
-
-    }
-  );
-
-}
-
-
-/* ============================================================
-   START BUTTON
-   ============================================================ */
-
-startBtn.addEventListener(
-  "click",
-  async function() {
-
-    if (verificationRunning) {
+    if (busy) {
       return;
+    }
+
+
+    if (!modelsReady) {
+
+      setStatus(
+        'Face-verification models are still loading. Please wait a moment.',
+        'error'
+      );
+
+      return;
+
     }
 
 
     if (!profileDescriptor) {
 
       setStatus(
-        "Please wait for the profile photo check to finish.",
-        "warning"
+        'The uploaded profile photo is not ready yet. Please wait a moment.',
+        'error'
       );
 
       return;
@@ -1815,111 +504,11 @@ startBtn.addEventListener(
     }
 
 
-    await startVerification();
-
-  }
-);
-
-
-/* ============================================================
-   CANCEL
-   ============================================================ */
-
-cancelBtn.addEventListener(
-  "click",
-  function() {
-
-    verificationRunning =
-      false;
-
-
-    stopCamera();
-
-
-    sendToParent({
-
-      type:
-        "JPS_CAMERA_CANCELLED",
-
-      nonce:
-        nonce,
-
-      timestamp:
-        Date.now()
-
-    });
-
-
-    setProgress(
-      0,
-      "Cancelled."
-    );
-
-
-    setStatus(
-      "Verification cancelled.",
-      "warning"
-    );
-
-
-    setGuide(
-      "Verification cancelled"
-    );
-
-  }
-);
-
-
-/* ============================================================
-   RECEIVE PROFILE PHOTO
-   ============================================================ */
-
-window.addEventListener(
-  "message",
-  async function(event) {
-
-    const data =
-      event.data;
-
-
-    if (!data) {
-      return;
-    }
-
-
-    if (
-      data.type !==
-      "JPS_PROFILE_PHOTO"
-    ) {
-
-      return;
-
-    }
-
-
-    /*
-     * Check nonce.
-     */
-    if (
-      nonce &&
-      data.nonce &&
-      data.nonce !== nonce
-    ) {
-
-      console.warn(
-        "Nonce mismatch."
-      );
-
-      return;
-
-    }
-
-
-    if (!data.photoDataUrl) {
+    if (!video.videoWidth) {
 
       setStatus(
-        "No profile photo was received.",
-        "error"
+        'Camera is not ready yet. Please wait a moment.',
+        'error'
       );
 
       return;
@@ -1927,74 +516,407 @@ window.addEventListener(
     }
 
 
-    /*
-     * If a descriptor already exists,
-     * don't process the same photo again.
-     */
-    if (profileDescriptor) {
-      return;
+    busy = true;
+
+    capture.disabled = true;
+
+
+    try {
+
+      setChallenge(
+        'Checking your live face against the uploaded profile photo...'
+      );
+
+
+      setStatus(
+        'Face recognition in progress. Keep your face centered and visible...',
+        'busy'
+      );
+
+
+      const average =
+        await verifyIdentity();
+
+
+      stopCamera();
+
+
+      setChallenge(
+        'Face verification passed.'
+      );
+
+
+      setStatus(
+        'Live face verification passed. Returning to registration...',
+        'success'
+      );
+
+
+      if (
+        window.opener &&
+        !window.opener.closed
+      ) {
+
+        const targetOrigin =
+          new URL(
+            document.referrer ||
+            location.href
+          ).origin;
+
+
+        window.opener.postMessage({
+
+          type:
+            'JPS_CAMERA_CONFIRMED',
+
+          nonce:
+            nonce,
+
+          match:
+            true,
+
+          verified:
+            true,
+
+          distance:
+            Number(
+              average.toFixed(4)
+            ),
+
+          timestamp:
+            Date.now()
+
+        },
+        targetOrigin === location.origin
+          ? '*'
+          : targetOrigin
+        );
+
+
+        setTimeout(
+          () => window.close(),
+          700
+        );
+
+
+      } else {
+
+        setStatus(
+          'Verification passed, but the registration window could not be reached. Please close this window and retry.',
+          'error'
+        );
+
+      }
+
+
+    } catch (err) {
+
+      setChallenge(
+        'Verification did not pass. Click Start Live Verification to retry.'
+      );
+
+
+      setStatus(
+        err && err.message
+          ? err.message
+          : 'Verification failed. Please try again.',
+        'error'
+      );
+
+
+      capture.disabled =
+        false;
+
+
+    } finally {
+
+      busy =
+        false;
+
     }
-
-
-    profilePhotoDataUrl =
-      data.photoDataUrl;
-
-
-    setStatus(
-      "Profile photo received. Checking..."
-    );
-
-
-    setGuide(
-      "Preparing profile photo..."
-    );
-
-
-    if (modelsLoaded) {
-
-      await prepareProfilePhoto();
-
-    }
-
-  },
-  false
-);
-
-
-/* ============================================================
-   CLEANUP
-   ============================================================ */
-
-window.addEventListener(
-  "beforeunload",
-  function() {
-
-    stopCamera();
 
   }
-);
 
 
-/* ============================================================
-   INITIALIZE
-   ============================================================ */
+  window.addEventListener(
+    'message',
+    async function (event) {
 
-async function initialize() {
+      if (
+        !window.opener ||
+        event.source !== window.opener
+      ) {
+        return;
+      }
 
-  sendReady();
 
-  await loadModels();
+      if (
+        event.data &&
+        event.data.nonce !== nonce
+      ) {
+        return;
+      }
 
-}
+
+      if (
+        !event.data ||
+        event.data.type !==
+          'JPS_PROFILE_PHOTO'
+      ) {
+        return;
+      }
 
 
-/* ============================================================
-   RUN
-   ============================================================ */
+      try {
 
-initialize();
+        profilePhotoDataUrl =
+          event.data.photoDataUrl ||
+          '';
 
+
+        if (!profilePhotoDataUrl) {
+
+          throw new Error(
+            'The uploaded profile photo was not received.'
+          );
+
+        }
+
+
+        setStatus(
+          'Loading your uploaded profile photo for face matching...',
+          'busy'
+        );
+
+
+        await loadProfilePhoto(
+          profilePhotoDataUrl
+        );
+
+
+        if (
+          window.opener &&
+          !window.opener.closed
+        ) {
+
+          window.opener.postMessage({
+
+            type:
+              'JPS_PROFILE_RECEIVED',
+
+            nonce:
+              nonce
+
+          }, '*');
+
+        }
+
+
+        setStatus(
+          'Profile photo loaded. Starting the live camera...',
+          'busy'
+        );
+
+
+        if (!stream) {
+          await startCamera();
+        }
+
+
+        capture.disabled =
+          !(
+            modelsReady &&
+            profileDescriptor &&
+            video.videoWidth
+          );
+
+
+        if (!capture.disabled) {
+
+          setStatus(
+            'Ready. Click Start Live Verification to verify your face.',
+            'success'
+          );
+
+          setChallenge(
+            'Click Start Live Verification to compare your live face.'
+          );
+
+        }
+
+
+      } catch (err) {
+
+        capture.disabled =
+          true;
+
+
+        setStatus(
+          err && err.message
+            ? err.message
+            : 'The uploaded profile photo could not be verified.',
+          'error'
+        );
+
+      }
+
+    }
+  );
+
+
+  video.addEventListener(
+    'loadedmetadata',
+    function () {
+
+      if (
+        modelsReady &&
+        profileDescriptor &&
+        stream
+      ) {
+
+        capture.disabled =
+          false;
+
+
+        setStatus(
+          'Ready. Click Start Live Verification to verify your face.',
+          'success'
+        );
+
+
+        setChallenge(
+          'Click Start Live Verification to compare your live face.'
+        );
+
+      }
+
+    }
+  );
+
+
+  capture.addEventListener(
+    'click',
+    verifyLiveFace
+  );
+
+
+  cancel.addEventListener(
+    'click',
+    closePage
+  );
+
+
+  window.addEventListener(
+    'beforeunload',
+    stopCamera
+  );
+
+
+  (async function init() {
+
+    if (!nonce) {
+
+      setStatus(
+        'This camera verification link is invalid.',
+        'error'
+      );
+
+      return;
+
+    }
+
+
+    try {
+
+      setStatus(
+        'Loading face-verification models. This may take a few seconds the first time...',
+        'busy'
+      );
+
+
+      await loadModels();
+
+
+      setStatus(
+        'Models ready. Waiting for the uploaded profile photo...',
+        'busy'
+      );
+
+
+      if (
+        window.opener &&
+        !window.opener.closed
+      ) {
+
+        let attempts = 0;
+
+
+        const sendReady =
+          () => {
+
+            if (
+              !window.opener ||
+              window.opener.closed ||
+              attempts >= 8
+            ) {
+              return;
+            }
+
+
+            attempts++;
+
+
+            window.opener.postMessage({
+
+              type:
+                'JPS_CAMERA_READY',
+
+              nonce:
+                nonce
+
+            }, '*');
+
+
+            if (
+              attempts < 8
+            ) {
+
+              setTimeout(
+                sendReady,
+                700
+              );
+
+            }
+
+          };
+
+
+        sendReady();
+
+
+      } else {
+
+        setStatus(
+          'Please open this page from the Journal Proposal registration form.',
+          'error'
+        );
+
+      }
+
+
+    } catch (err) {
+
+      setStatus(
+        'Face-verification models could not be loaded. Check your internet connection and reload the verification window.',
+        'error'
+      );
+
+    }
+
+  })();
+
+})();
 </script>
-
 </body>
 </html>
+```

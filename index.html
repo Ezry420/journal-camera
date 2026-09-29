@@ -76,8 +76,11 @@
 
     .face-guide {
       position: absolute;
-      inset: 10% 16%;
-      border: 2px solid rgba(255,255,255,.75);
+      left: 16%;
+      right: 16%;
+      top: 10%;
+      bottom: 10%;
+      border: 2px solid rgba(255, 255, 255, .72);
       border-radius: 48%;
       pointer-events: none;
     }
@@ -238,14 +241,22 @@
   <h1>Live Face Verification</h1>
 
   <p>
-    Allow camera access. First, position your face in the camera.
-    You will be asked to blink once. Your live face will then be
-    compared with your uploaded profile photo.
+    Allow camera access and position your face inside the guide.
+    Your live face will be compared with the uploaded profile photo.
   </p>
 
   <div class="video-wrap">
-    <video id="video" autoplay muted playsinline></video>
-    <div class="face-guide"></div>
+    <video
+      id="video"
+      autoplay
+      muted
+      playsinline>
+    </video>
+
+```
+<div class="face-guide"></div>
+```
+
   </div>
 
   <div id="status" class="status busy">
@@ -254,19 +265,29 @@
 
   <div id="challengeMeter" class="meter">
     <strong>Requirement:</strong>
-    One face, one natural blink, then face matching.
-    <div class="progress">
-      <div id="progressBar" class="progress-bar"></div>
-    </div>
+    One face and a face-recognition match.
+
+```
+<div class="progress">
+  <div id="progressBar" class="progress-bar"></div>
+</div>
+```
+
   </div>
 
   <div class="actions">
-    <button id="cancel" type="button">
-      Cancel
-    </button>
 
 ```
-<button id="capture" type="button" disabled>
+<button
+  id="cancel"
+  type="button">
+  Cancel
+</button>
+
+<button
+  id="capture"
+  type="button"
+  disabled>
   Start Live Verification
 </button>
 ```
@@ -274,7 +295,7 @@
   </div>
 
   <div class="small">
-    Face verification is performed locally in this page.
+    Face recognition runs locally in this page.
     The camera image is not uploaded or saved.
   </div>
 
@@ -285,24 +306,45 @@
 
   'use strict';
 
+
   /* =========================================================
-     URL / DOM
+     PARAMETERS
      ========================================================= */
 
-  const params = new URLSearchParams(location.search);
+  const params =
+    new URLSearchParams(
+      location.search
+    );
 
-  const nonce = params.get('nonce') || '';
-
-  const video = document.getElementById('video');
-  const status = document.getElementById('status');
-  const capture = document.getElementById('capture');
-  const cancel = document.getElementById('cancel');
-  const challengeMeter = document.getElementById('challengeMeter');
-  const progressBar = document.getElementById('progressBar');
+  const nonce =
+    params.get('nonce') || '';
 
 
   /* =========================================================
-     FACE API MODEL
+     ELEMENTS
+     ========================================================= */
+
+  const video =
+    document.getElementById('video');
+
+  const status =
+    document.getElementById('status');
+
+  const capture =
+    document.getElementById('capture');
+
+  const cancel =
+    document.getElementById('cancel');
+
+  const challengeMeter =
+    document.getElementById('challengeMeter');
+
+  const progressBar =
+    document.getElementById('progressBar');
+
+
+  /* =========================================================
+     MODELS
      ========================================================= */
 
   const MODEL_BASE =
@@ -310,49 +352,38 @@
 
 
   /*
-   * Android cameras can produce descriptors that differ more
-   * than desktop webcams because of:
+   * IMPORTANT:
+   *
+   * The previous version used 0.68.
+   *
+   * Android phones can produce slightly different face
+   * descriptors because of:
    *
    * - HDR
    * - autofocus
-   * - exposure changes
-   * - camera sharpening
-   * - image compression
-   * - low-light noise
+   * - exposure
+   * - sharpening
+   * - low light
+   * - camera compression
    *
-   * The old 0.68 requirement was too strict.
+   * Therefore this version uses a more tolerant threshold.
    */
 
   const MATCH_THRESHOLD = 0.75;
 
+
   /*
-   * Profile image detection.
+   * Uploaded profile photo detection.
    */
-  const PROFILE_DETECT_SCORE = 0.38;
+
+  const PROFILE_DETECT_SCORE = 0.35;
+
 
   /*
    * Live camera detection.
    */
-  const LIVE_DETECT_SCORE = 0.30;
 
-
-  /*
-   * Blink thresholds.
-   *
-   * EAR = Eye Aspect Ratio.
-   *
-   * Open eye is normally around:
-   * 0.25 - 0.40
-   *
-   * Closed eye is normally:
-   * below about 0.20 - 0.23
-   *
-   * Because Android cameras can be noisy, we use a tolerant
-   * threshold.
-   */
-
-  const BLINK_CLOSED_THRESHOLD = 0.215;
-  const BLINK_OPEN_THRESHOLD = 0.245;
+  const LIVE_DETECT_SCORE = 0.28;
 
 
   /* =========================================================
@@ -371,30 +402,29 @@
 
   let verificationStarted = false;
 
-  let blinkDetected = false;
-
-  let eyesWereClosed = false;
-
-  let blinkFrames = 0;
-
-  let openFramesAfterBlink = 0;
-
 
   /* =========================================================
      STATUS
      ========================================================= */
 
-  function setStatus(message, type) {
+  function setStatus(
+    message,
+    type
+  ) {
 
-    status.textContent = message;
+    status.textContent =
+      message;
 
     status.className =
-      'status ' + (type || '');
-
+      'status ' +
+      (type || '');
   }
 
 
-  function setChallenge(text, percent) {
+  function setChallenge(
+    text,
+    percent
+  ) {
 
     challengeMeter.innerHTML =
       '<strong>Live verification:</strong> ' +
@@ -403,14 +433,23 @@
       '<div id="progressBar" class="progress-bar"></div>' +
       '</div>';
 
+
     const bar =
-      document.getElementById('progressBar');
+      document.getElementById(
+        'progressBar'
+      );
+
 
     if (bar) {
 
       bar.style.width =
-        Math.max(0, Math.min(100, percent || 0)) + '%';
-
+        Math.max(
+          0,
+          Math.min(
+            100,
+            percent || 0
+          )
+        ) + '%';
     }
   }
 
@@ -423,36 +462,42 @@
 
     if (stream) {
 
-      stream.getTracks().forEach(function (track) {
+      stream
+        .getTracks()
+        .forEach(function (track) {
 
-        try {
-          track.stop();
-        } catch (e) {}
+          try {
+            track.stop();
+          } catch (e) {}
 
-      });
+        });
 
       stream = null;
     }
 
+
     try {
       video.pause();
     } catch (e) {}
+
 
     video.srcObject = null;
   }
 
 
   /* =========================================================
-     CLOSE PAGE
+     CLOSE
      ========================================================= */
 
   function closePage() {
 
     stopCamera();
 
+
     try {
       window.close();
     } catch (e) {}
+
 
     setStatus(
       'You can close this window and return to registration.',
@@ -462,26 +507,33 @@
 
 
   /* =========================================================
-     LOAD MODELS
+     LOAD FACE API MODELS
      ========================================================= */
 
   async function loadModels() {
 
     await Promise.all([
 
-      faceapi.nets.tinyFaceDetector.loadFromUri(
-        MODEL_BASE + 'tiny_face_detector'
-      ),
+      faceapi.nets.tinyFaceDetector
+        .loadFromUri(
+          MODEL_BASE +
+          'tiny_face_detector'
+        ),
 
-      faceapi.nets.faceLandmark68Net.loadFromUri(
-        MODEL_BASE + 'face_landmark_68'
-      ),
+      faceapi.nets.faceLandmark68Net
+        .loadFromUri(
+          MODEL_BASE +
+          'face_landmark_68'
+        ),
 
-      faceapi.nets.faceRecognitionNet.loadFromUri(
-        MODEL_BASE + 'face_recognition'
-      )
+      faceapi.nets.faceRecognitionNet
+        .loadFromUri(
+          MODEL_BASE +
+          'face_recognition'
+        )
 
     ]);
+
 
     modelsReady = true;
   }
@@ -491,7 +543,10 @@
      DISTANCE
      ========================================================= */
 
-  function distance(a, b) {
+  function distance(
+    a,
+    b
+  ) {
 
     return faceapi.euclideanDistance(
       a,
@@ -501,13 +556,20 @@
 
 
   /* =========================================================
-     FACE DETECTION
+     DETECT FACE
      ========================================================= */
 
-  async function detectFace(source, options) {
+  async function detectFace(
+    source,
+    options
+  ) {
 
     const isProfile =
-      !!(options && options.profile);
+      !!(
+        options &&
+        options.profile
+      );
+
 
     const scoreThreshold =
       isProfile
@@ -515,78 +577,126 @@
         : LIVE_DETECT_SCORE;
 
 
-    let inputSize = 320;
-
-
-    /*
-     * Mobile devices sometimes perform better with 224.
-     * 320 is still used first for reliability.
-     */
-
     const result =
       await faceapi
+
         .detectAllFaces(
           source,
+
           new faceapi.TinyFaceDetectorOptions({
-            inputSize: inputSize,
-            scoreThreshold: scoreThreshold
+
+            inputSize: 320,
+
+            scoreThreshold:
+              scoreThreshold
+
           })
         )
+
         .withFaceLandmarks()
+
         .withFaceDescriptors();
 
 
-    if (!result || result.length === 0) {
+    /* ---------------------------------------------------------
+       NO FACE
+       --------------------------------------------------------- */
+
+    if (
+      !result ||
+      result.length === 0
+    ) {
 
       return {
+
         ok: false,
+
         message: isProfile
-          ? 'No face was detected in the uploaded photo. Please choose a clear photo showing your face.'
-          : 'No face detected. Keep your face inside the guide and move slightly closer.'
+
+          ? 'No face was detected in the uploaded photo. Please use a clear front-facing photo.'
+
+          : 'No face was detected. Keep your face visible and move closer.'
+
       };
     }
 
 
-    if (result.length > 1) {
+    /* ---------------------------------------------------------
+       MORE THAN ONE FACE
+       --------------------------------------------------------- */
+
+    if (
+      result.length > 1
+    ) {
 
       return {
+
         ok: false,
+
         message:
           'More than one face was detected. Only one person is allowed.'
+
       };
     }
 
 
-    const item = result[0];
+    const item =
+      result[0];
 
-    const detection = item.detection;
+
+    const detection =
+      item.detection;
 
 
     if (!detection) {
 
       return {
+
         ok: false,
+
         message:
           'The face could not be detected clearly.'
+
       };
     }
 
 
-    if (detection.score < scoreThreshold) {
+    /* ---------------------------------------------------------
+       DETECTION SCORE
+       --------------------------------------------------------- */
+
+    if (
+      detection.score <
+      scoreThreshold
+    ) {
 
       return {
+
         ok: false,
+
         message: isProfile
-          ? 'The face in the uploaded photo is unclear. Please use a clearer front-facing photo.'
-          : 'Your face is unclear. Improve the lighting and face the camera.'
+
+          ? 'The face in the uploaded photo is not clear enough. Please use a clearer photo.'
+
+          : 'Your face is not clear enough. Improve the lighting and face the camera.'
+
       };
     }
 
 
+    /* ---------------------------------------------------------
+       LIVE FACE SIZE
+       --------------------------------------------------------- */
+
     /*
-     * Only apply minimum face size to LIVE camera.
+     * IMPORTANT:
      *
-     * Do NOT apply it to the uploaded profile image.
+     * We do NOT require a particular face size for the uploaded
+     * photo.
+     *
+     * For live camera we only require a very small minimum
+     * percentage so Android users don't have to put their face
+     * extremely close to the camera.
      */
 
     if (!isProfile) {
@@ -594,10 +704,12 @@
       const box =
         detection.box;
 
-      const area =
+
+      const faceArea =
         Math.max(
           1,
-          box.width * box.height
+          box.width *
+          box.height
         );
 
 
@@ -605,6 +717,7 @@
         source.videoWidth ||
         source.width ||
         1;
+
 
       const imageHeight =
         source.videoHeight ||
@@ -615,20 +728,27 @@
       const imageArea =
         Math.max(
           1,
-          imageWidth * imageHeight
+          imageWidth *
+          imageHeight
         );
 
 
       const ratio =
-        area / imageArea;
+        faceArea /
+        imageArea;
 
 
-      if (ratio < 0.018) {
+      if (
+        ratio < 0.012
+      ) {
 
         return {
+
           ok: false,
+
           message:
-            'Your face is too small. Move slightly closer to the camera.'
+            'Your face is too small. Move a little closer to the camera.'
+
         };
       }
     }
@@ -652,14 +772,18 @@
 
 
   /* =========================================================
-     PROFILE PHOTO
+     LOAD PROFILE PHOTO
      ========================================================= */
 
-  async function loadProfilePhoto(dataUrl) {
+  async function loadProfilePhoto(
+    dataUrl
+  ) {
 
     if (
       !dataUrl ||
-      !dataUrl.startsWith('data:image/')
+      !dataUrl.startsWith(
+        'data:image/'
+      )
     ) {
 
       throw new Error(
@@ -672,37 +796,48 @@
       new Image();
 
 
-    img.decoding = 'async';
+    img.decoding =
+      'async';
 
-    img.src = dataUrl;
+
+    img.src =
+      dataUrl;
 
 
-    await new Promise(function (resolve, reject) {
+    await new Promise(
+      function (
+        resolve,
+        reject
+      ) {
 
-      img.onload = resolve;
+        img.onload =
+          resolve;
 
-      img.onerror = function () {
 
-        reject(
-          new Error(
-            'The uploaded profile photo could not be decoded.'
-          )
-        );
+        img.onerror =
+          function () {
 
-      };
+            reject(
+              new Error(
+                'The uploaded profile photo could not be decoded.'
+              )
+            );
+          };
 
-    });
+      }
+    );
 
 
     /*
-     * Make sure the uploaded image contains exactly one
-     * detectable face.
+     * The profile photo must contain exactly one face.
      */
 
     const check =
       await detectFace(
         img,
-        { profile: true }
+        {
+          profile: true
+        }
       );
 
 
@@ -720,7 +855,7 @@
 
 
   /* =========================================================
-     CAMERA
+     START CAMERA
      ========================================================= */
 
   async function startCamera() {
@@ -753,40 +888,41 @@
 
     try {
 
-      /*
-       * Stop any previous stream.
-       */
-
       stopCamera();
 
 
+      /*
+       * User-facing camera.
+       */
+
       stream =
-        await navigator.mediaDevices.getUserMedia({
+        await navigator.mediaDevices
+          .getUserMedia({
 
-          video: {
+            video: {
 
-            facingMode: {
-              ideal: 'user'
+              facingMode: {
+                ideal: 'user'
+              },
+
+              width: {
+                ideal: 640
+              },
+
+              height: {
+                ideal: 480
+              },
+
+              frameRate: {
+                ideal: 24,
+                max: 30
+              }
+
             },
 
-            width: {
-              ideal: 640
-            },
+            audio: false
 
-            height: {
-              ideal: 480
-            },
-
-            frameRate: {
-              ideal: 24,
-              max: 30
-            }
-
-          },
-
-          audio: false
-
-        });
+          });
 
 
       video.srcObject =
@@ -797,33 +933,46 @@
 
 
       /*
-       * Wait until Android reports the actual video size.
+       * Wait for actual camera dimensions.
        */
 
-      if (!video.videoWidth) {
+      if (
+        !video.videoWidth
+      ) {
 
-        await new Promise(function (resolve) {
+        await new Promise(
+          function (resolve) {
 
-          const timeout =
-            setTimeout(resolve, 2500);
-
-          video.addEventListener(
-            'loadedmetadata',
-            function handler() {
-
-              clearTimeout(timeout);
-
-              video.removeEventListener(
-                'loadedmetadata',
-                handler
+            const timeout =
+              setTimeout(
+                resolve,
+                2500
               );
 
-              resolve();
 
-            }
-          );
+            video.addEventListener(
+              'loadedmetadata',
 
-        });
+              function handler() {
+
+                clearTimeout(
+                  timeout
+                );
+
+
+                video.removeEventListener(
+                  'loadedmetadata',
+                  handler
+                );
+
+
+                resolve();
+
+              }
+            );
+
+          }
+        );
       }
 
 
@@ -833,12 +982,15 @@
         video.videoWidth
       ) {
 
-        capture.disabled = false;
+        capture.disabled =
+          false;
+
 
         setStatus(
           'Camera ready. Click Start Live Verification.',
           'success'
         );
+
 
         setChallenge(
           'Position your face inside the guide.',
@@ -847,7 +999,9 @@
 
       } else {
 
-        capture.disabled = true;
+        capture.disabled =
+          true;
+
 
         setStatus(
           'Camera ready. Finishing verification setup...',
@@ -858,11 +1012,13 @@
 
     } catch (err) {
 
-      capture.disabled = true;
+      capture.disabled =
+        true;
 
 
       const name =
-        err && err.name
+        err &&
+        err.name
           ? err.name
           : '';
 
@@ -891,7 +1047,7 @@
       ) {
 
         setStatus(
-          'The camera is currently being used by another application. Close other camera apps and try again.',
+          'The camera is being used by another application. Close other camera apps and try again.',
           'error'
         );
 
@@ -912,301 +1068,21 @@
 
   function wait(ms) {
 
-    return new Promise(function (resolve) {
+    return new Promise(
+      function (resolve) {
 
-      setTimeout(resolve, ms);
+        setTimeout(
+          resolve,
+          ms
+        );
 
-    });
-  }
-
-
-  /* =========================================================
-     EYE ASPECT RATIO
-     ========================================================= */
-
-  function eyeAspectRatio(points) {
-
-    /*
-     * face-api landmark positions:
-     *
-     * Left eye:
-     * 36,37,38,39,40,41
-     *
-     * Right eye:
-     * 42,43,44,45,46,47
-     */
-
-
-    function distance2D(a, b) {
-
-      const dx =
-        a.x - b.x;
-
-      const dy =
-        a.y - b.y;
-
-      return Math.sqrt(
-        dx * dx + dy * dy
-      );
-    }
-
-
-    /*
-     * Standard EAR:
-     *
-     * (|p2-p6| + |p3-p5|)
-     * --------------------
-     *      2|p1-p4|
-     */
-
-    const vertical1 =
-      distance2D(
-        points[1],
-        points[5]
-      );
-
-    const vertical2 =
-      distance2D(
-        points[2],
-        points[4]
-      );
-
-    const horizontal =
-      distance2D(
-        points[0],
-        points[3]
-      );
-
-
-    if (horizontal <= 0) {
-
-      return 1;
-    }
-
-
-    return (
-      (vertical1 + vertical2) /
-      (2 * horizontal)
+      }
     );
   }
 
 
-  function calculateBlinkEAR(landmarks) {
-
-    const positions =
-      landmarks.positions;
-
-
-    const leftEye =
-      positions.slice(36, 42);
-
-    const rightEye =
-      positions.slice(42, 48);
-
-
-    const leftEAR =
-      eyeAspectRatio(leftEye);
-
-    const rightEAR =
-      eyeAspectRatio(rightEye);
-
-
-    return (
-      leftEAR +
-      rightEAR
-    ) / 2;
-  }
-
-
   /* =========================================================
-     BLINK DETECTION
-     ========================================================= */
-
-  async function detectBlink() {
-
-    /*
-     * Reset state.
-     */
-
-    eyesWereClosed = false;
-
-    blinkDetected = false;
-
-    blinkFrames = 0;
-
-    openFramesAfterBlink = 0;
-
-
-    const started =
-      Date.now();
-
-
-    const timeout =
-      20000;
-
-
-    setChallenge(
-      'Look directly at the camera and blink naturally once.',
-      10
-    );
-
-
-    setStatus(
-      'Look at the camera and blink once...',
-      'busy'
-    );
-
-
-    while (
-      Date.now() - started < timeout
-    ) {
-
-      /*
-       * Make sure the camera is still available.
-       */
-
-      if (
-        !video.videoWidth ||
-        !video.videoHeight
-      ) {
-
-        await wait(150);
-
-        continue;
-      }
-
-
-      const result =
-        await faceapi
-          .detectSingleFace(
-            video,
-            new faceapi.TinyFaceDetectorOptions({
-              inputSize: 320,
-              scoreThreshold: LIVE_DETECT_SCORE
-            })
-          )
-          .withFaceLandmarks();
-
-
-      /*
-       * No face.
-       */
-
-      if (!result) {
-
-        eyesWereClosed = false;
-
-        blinkFrames = 0;
-
-        setStatus(
-          'Face not detected. Keep your face centered.',
-          'busy'
-        );
-
-        setChallenge(
-          'Keep one face centered and visible.',
-          8
-        );
-
-        await wait(120);
-
-        continue;
-      }
-
-
-      const ear =
-        calculateBlinkEAR(
-          result.landmarks
-        );
-
-
-      /*
-       * CLOSED
-       */
-
-      if (
-        ear <
-        BLINK_CLOSED_THRESHOLD
-      ) {
-
-        eyesWereClosed = true;
-
-        blinkFrames++;
-
-        openFramesAfterBlink = 0;
-
-
-        setStatus(
-          'Eyes closed — continue the blink...',
-          'busy'
-        );
-
-        setChallenge(
-          'Blink detected. Open your eyes.',
-          45
-        );
-
-      }
-
-      /*
-       * OPEN AFTER CLOSED
-       *
-       * This completes the blink.
-       */
-
-      else if (
-        eyesWereClosed &&
-        ear >
-        BLINK_OPEN_THRESHOLD
-      ) {
-
-        openFramesAfterBlink++;
-
-
-        if (
-          openFramesAfterBlink >= 2
-        ) {
-
-          blinkDetected = true;
-
-          setChallenge(
-            'Blink detected. Now checking your identity...',
-            60
-          );
-
-          setStatus(
-            'Blink detected. Checking your face...',
-            'busy'
-          );
-
-          return true;
-        }
-
-      }
-
-      /*
-       * NORMAL OPEN EYES.
-       */
-
-      else {
-
-        setStatus(
-          'Keep looking at the camera and blink once.',
-          'busy'
-        );
-      }
-
-
-      await wait(120);
-    }
-
-
-    return false;
-  }
-
-
-  /* =========================================================
-     FACE MATCHING
+     VERIFY IDENTITY
      ========================================================= */
 
   async function verifyIdentity() {
@@ -1223,61 +1099,73 @@
 
 
     /*
-     * Take several frames.
+     * Collect 10 frames.
      *
-     * We deliberately do not require every frame to match.
-     * Android cameras can produce one or two poor frames.
+     * We don't require every frame to succeed.
+     *
+     * This is important for Android because autofocus,
+     * exposure, and frame processing can temporarily produce
+     * a poor detection.
      */
 
-    const totalSamples =
-      8;
+    const TOTAL_SAMPLES =
+      10;
 
 
     for (
       let i = 0;
-      i < totalSamples;
+      i < TOTAL_SAMPLES;
       i++
     ) {
 
-      const result =
-        await detectFace(
-          video,
-          { profile: false }
-        );
+      let result = null;
 
 
-      if (!result.ok) {
+      try {
 
-        /*
-         * One temporary bad frame should not immediately
-         * destroy the entire verification.
-         */
+        result =
+          await detectFace(
+            video,
+            {
+              profile: false
+            }
+          );
 
-        await wait(120);
+      } catch (e) {
 
-        continue;
+        result = null;
       }
 
 
-      const d =
-        distance(
-          profileDescriptor,
-          result.descriptor
-        );
-
-
       if (
-        Number.isFinite(d)
+        result &&
+        result.ok &&
+        result.descriptor
       ) {
 
-        distances.push(d);
+        const d =
+          distance(
+            profileDescriptor,
+            result.descriptor
+          );
+
+
+        if (
+          Number.isFinite(d)
+        ) {
+
+          distances.push(d);
+        }
       }
 
 
       const percent =
-        60 +
+        10 +
         Math.round(
-          ((i + 1) / totalSamples) * 35
+          (
+            (i + 1) /
+            TOTAL_SAMPLES
+          ) * 80
         );
 
 
@@ -1287,39 +1175,50 @@
       );
 
 
-      await wait(150);
+      await wait(180);
     }
 
+
+    /* ---------------------------------------------------------
+       NOT ENOUGH SAMPLES
+       --------------------------------------------------------- */
 
     if (
       distances.length < 4
     ) {
 
       throw new Error(
-        'The camera could not get enough clear face samples. Please improve the lighting and try again.'
+        'The camera could not obtain enough clear face samples. Please improve the lighting, face the camera, and try again.'
       );
     }
 
 
-    /*
-     * Sort from best match to worst.
-     */
+    /* ---------------------------------------------------------
+       SORT
+       --------------------------------------------------------- */
 
     const sorted =
       distances
         .slice()
-        .sort(function (a, b) {
-          return a - b;
-        });
+        .sort(
+          function (
+            a,
+            b
+          ) {
+
+            return a - b;
+
+          }
+        );
 
 
-    /*
-     * Best 5 samples.
-     */
+    /* ---------------------------------------------------------
+       BEST SAMPLES
+       --------------------------------------------------------- */
 
     const bestCount =
       Math.min(
-        5,
+        6,
         sorted.length
       );
 
@@ -1333,16 +1232,22 @@
 
     const bestAverage =
       bestSamples.reduce(
-        function (sum, value) {
-          return sum + value;
+        function (
+          total,
+          value
+        ) {
+
+          return total + value;
+
         },
         0
-      ) / bestSamples.length;
+      ) /
+      bestSamples.length;
 
 
-    /*
-     * Median.
-     */
+    /* ---------------------------------------------------------
+       MEDIAN
+       --------------------------------------------------------- */
 
     const median =
       sorted[
@@ -1352,73 +1257,94 @@
       ];
 
 
-    /*
-     * Count matches.
-     */
+    /* ---------------------------------------------------------
+       MATCH COUNT
+       --------------------------------------------------------- */
 
     const matchingSamples =
-      distances.filter(function (d) {
+      distances.filter(
+        function (d) {
 
-        return d <= MATCH_THRESHOLD;
+          return d <=
+            MATCH_THRESHOLD;
 
-      }).length;
+        }
+      ).length;
 
 
     /*
-     * More tolerant Android decision.
-     *
-     * We require:
-     *
-     * - at least 4 good samples
-     * - at least half of the samples match
-     * - best samples are reasonably close
-     *
-     * This is much less sensitive to one blurry frame.
+     * Require a majority of the usable samples.
      */
 
-    const majorityRequired =
+    const requiredMatches =
       Math.max(
         3,
         Math.ceil(
-          distances.length * 0.50
+          distances.length *
+          0.50
         )
       );
 
 
-    const matched =
+    const enoughMatches =
       matchingSamples >=
-      majorityRequired;
+      requiredMatches;
 
 
-    const stable =
-      bestAverage <= 0.76;
+    /*
+     * Best samples should be reasonably close.
+     */
+
+    const stableMatch =
+      bestAverage <=
+      0.78;
 
 
-    const medianOkay =
-      median <= 0.79;
+    /*
+     * Median prevents a situation where only a few
+     * unusually good frames match.
+     */
 
+    const medianMatch =
+      median <=
+      0.80;
+
+
+    /* ---------------------------------------------------------
+       FINAL RESULT
+       --------------------------------------------------------- */
 
     if (
-      !matched ||
-      !stable ||
-      !medianOkay
+      !enoughMatches ||
+      !stableMatch ||
+      !medianMatch
     ) {
 
       throw new Error(
-        'Face recognition did not match the uploaded profile photo closely enough. Make sure your face is well lit, centered, and looking at the camera, then try again.'
+        'Face recognition did not match the uploaded profile photo closely enough. Make sure your face is clearly visible, face the camera, improve the lighting, and try again.'
       );
     }
+
+
+    const overallAverage =
+      distances.reduce(
+        function (
+          total,
+          value
+        ) {
+
+          return total + value;
+
+        },
+        0
+      ) /
+      distances.length;
 
 
     return {
 
       average:
-        distances.reduce(
-          function (a, b) {
-            return a + b;
-          },
-          0
-        ) / distances.length,
+        overallAverage,
 
       bestAverage:
         bestAverage,
@@ -1431,12 +1357,13 @@
 
       total:
         distances.length
+
     };
   }
 
 
   /* =========================================================
-     FULL VERIFICATION
+     MAIN VERIFICATION
      ========================================================= */
 
   async function verifyLiveFace() {
@@ -1468,7 +1395,9 @@
     }
 
 
-    if (!video.videoWidth) {
+    if (
+      !video.videoWidth
+    ) {
 
       setStatus(
         'Camera is not ready yet.',
@@ -1479,56 +1408,47 @@
     }
 
 
-    busy = true;
+    busy =
+      true;
 
-    verificationStarted = true;
 
-    capture.disabled = true;
+    verificationStarted =
+      true;
+
+
+    capture.disabled =
+      true;
 
 
     try {
 
-      /*
-       * STEP 1
-       * Blink
-       */
-
       setChallenge(
-        'Look at the camera and blink once.',
+        'Checking your live face...',
         10
       );
 
 
-      const blinkPassed =
-        await detectBlink();
-
-
-      if (!blinkPassed) {
-
-        throw new Error(
-          'A blink was not detected. Please look directly at the camera and blink naturally once.'
-        );
-      }
-
-
-      /*
-       * STEP 2
-       * Face recognition
-       */
-
       setStatus(
-        'Blink verified. Matching your face...',
+        'Face recognition in progress. Keep your face centered and visible...',
         'busy'
       );
 
+
+      /*
+       * NO BLINK.
+       *
+       * NO HEAD TURN.
+       *
+       * Only face recognition.
+       */
 
       const result =
         await verifyIdentity();
 
 
-      /*
-       * SUCCESS
-       */
+      /* -------------------------------------------------------
+         SUCCESS
+         ------------------------------------------------------- */
 
       stopCamera();
 
@@ -1546,7 +1466,7 @@
 
 
       /*
-       * Send result back to Index.html.
+       * Return result to Index.html.
        */
 
       if (
@@ -1568,17 +1488,24 @@
           match:
             true,
 
+          /*
+           * Explicitly false because this version
+           * does not use blink verification.
+           */
+
           blink:
-            true,
+            false,
 
           distance:
             Number(
-              result.average.toFixed(4)
+              result.average
+                .toFixed(4)
             ),
 
           bestDistance:
             Number(
-              result.bestAverage.toFixed(4)
+              result.bestAverage
+                .toFixed(4)
             ),
 
           timestamp:
@@ -1588,8 +1515,8 @@
 
 
         /*
-         * Give the opener enough time to receive
-         * the message before closing.
+         * Allow the opener time to process
+         * the confirmation.
          */
 
         setTimeout(
@@ -1629,30 +1556,34 @@
       );
 
 
-      capture.disabled = false;
+      capture.disabled =
+        false;
 
     } finally {
 
-      busy = false;
+      busy =
+        false;
     }
   }
 
 
   /* =========================================================
-     RECEIVE PROFILE PHOTO FROM INDEX.HTML
+     RECEIVE PROFILE PHOTO
      ========================================================= */
 
   window.addEventListener(
     'message',
+
     async function (event) {
 
       /*
-       * Only accept messages from the opener.
+       * Only communicate with the opener.
        */
 
       if (
         !window.opener ||
-        event.source !== window.opener
+        event.source !==
+          window.opener
       ) {
 
         return;
@@ -1660,12 +1591,13 @@
 
 
       /*
-       * Validate nonce.
+       * Verify nonce.
        */
 
       if (
         event.data &&
-        event.data.nonce !== nonce
+        event.data.nonce !==
+          nonce
       ) {
 
         return;
@@ -1685,10 +1617,13 @@
       try {
 
         profilePhotoDataUrl =
-          event.data.photoDataUrl || '';
+          event.data.photoDataUrl ||
+          '';
 
 
-        if (!profilePhotoDataUrl) {
+        if (
+          !profilePhotoDataUrl
+        ) {
 
           throw new Error(
             'The uploaded profile photo was not received.'
@@ -1708,14 +1643,17 @@
         );
 
 
+        /*
+         * Detect and create the reference descriptor.
+         */
+
         await loadProfilePhoto(
           profilePhotoDataUrl
         );
 
 
         /*
-         * Tell Index.html that the profile photo
-         * was received successfully.
+         * Notify Index.html.
          */
 
         if (
@@ -1753,7 +1691,8 @@
           video.videoWidth
         ) {
 
-          capture.disabled = false;
+          capture.disabled =
+            false;
 
 
           setStatus(
@@ -1771,7 +1710,8 @@
 
       } catch (err) {
 
-        capture.disabled = true;
+        capture.disabled =
+          true;
 
 
         setStatus(
@@ -1793,6 +1733,7 @@
 
   video.addEventListener(
     'loadedmetadata',
+
     function () {
 
       if (
@@ -1802,7 +1743,8 @@
         video.videoWidth
       ) {
 
-        capture.disabled = false;
+        capture.disabled =
+          false;
 
 
         if (!verificationStarted) {
@@ -1882,8 +1824,8 @@
       /*
        * Tell Index.html that Camera.html is ready.
        *
-       * Send several times because mobile browsers can
-       * delay popup/message initialization.
+       * Repeat several times because Android browsers can
+       * delay popup initialization.
        */
 
       if (
@@ -1891,7 +1833,8 @@
         !window.opener.closed
       ) {
 
-        let attempts = 0;
+        let attempts =
+          0;
 
 
         const sendReady =

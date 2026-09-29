@@ -56,7 +56,7 @@
     </div>
 
     <div id="status" class="status busy">Loading face-verification models...</div>
-    <div id="challengeMeter" class="meter"><strong>Requirement:</strong> exactly one live face and a face-recognition match with your uploaded profile photo.</div>
+    <div id="challengeMeter" class="meter"><strong>Requirement:</strong> exactly one live face, a face-recognition match, and one natural blink.</div>
 
     <div class="actions">
       <button id="cancel" type="button">Cancel</button>
@@ -79,14 +79,24 @@
   const challengeMeter = document.getElementById('challengeMeter');
 
   const MODEL_BASE = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js-models/master/';
-  const MATCH_THRESHOLD = 0.55;
-  const LIVE_SAMPLE_THRESHOLD = 0.62;
+  // Mobile cameras and different lighting can produce slightly different
+  // descriptors for the same person. Keep the blink liveness requirement,
+  // but use a slightly more tolerant face-match threshold.
+  const MATCH_THRESHOLD = 0.60;
+  const LIVE_SAMPLE_THRESHOLD = 0.66;
+  const BLINK_EAR_THRESHOLD = 0.23;
+  const BLINK_CLOSED_FRAMES = 2;
+  const BLINK_MAX_WAIT_MS = 12000;
 
   let stream = null;
   let profilePhotoDataUrl = '';
   let profileDescriptor = null;
   let modelsReady = false;
   let busy = false;
+  let blinkDetected = false;
+  let closedEyeFrames = 0;
+  let blinkMonitor = null;
+  let blinkStartedAt = 0;
 
   function setStatus(message, type) {
     status.textContent = message;
@@ -98,6 +108,7 @@
   }
 
   function stopCamera() {
+    stopBlinkMonitor();
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
       stream = null;
@@ -145,7 +156,9 @@
 
     const box = detection.box;
     const area = Math.max(1, box.width * box.height);
-    const imageArea = Math.max(1, source.videoWidth ? source.videoWidth * source.videoHeight : source.width * source.height);
+    const sourceWidth = source.videoWidth || source.naturalWidth || source.width || 1;
+    const sourceHeight = source.videoHeight || source.naturalHeight || source.height || 1;
+    const imageArea = Math.max(1, sourceWidth * sourceHeight);
     if (area / imageArea < 0.035) {
       return { ok:false, message:'Your face is too small. Move closer to the camera.' };
     }
@@ -198,7 +211,8 @@
         setStatus('Camera ready. Finishing face-verification setup...', 'busy');
       } else {
         setStatus('Ready. Click Start Live Verification to verify your face.', 'success');
-        setChallenge('Click Start Live Verification to compare your live face.');
+        setChallenge('Blink once naturally while keeping your face centered.');
+        startBlinkMonitor();
       }
     } catch (err) {
       capture.disabled = true;
@@ -215,6 +229,68 @@
 
   function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function distance2(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function eyeAspectRatio(eye) {
+    if (!eye || eye.length < 6) return 1;
+    const a = distance2(eye[1], eye[5]);
+    const b = distance2(eye[2], eye[4]);
+    const c = distance2(eye[0], eye[3]);
+    return c ? (a + b) / (2 * c) : 1;
+  }
+
+  function isBlinking(landmarks) {
+    if (!landmarks) return false;
+    const left = eyeAspectRatio(landmarks.getLeftEye());
+    const right = eyeAspectRatio(landmarks.getRightEye());
+    return ((left + right) / 2) < BLINK_EAR_THRESHOLD;
+  }
+
+  function stopBlinkMonitor() {
+    if (blinkMonitor) {
+      clearInterval(blinkMonitor);
+      blinkMonitor = null;
+    }
+  }
+
+  function startBlinkMonitor() {
+    stopBlinkMonitor();
+    blinkDetected = false;
+    closedEyeFrames = 0;
+    blinkStartedAt = Date.now();
+    setChallenge('Blink once naturally while keeping your face centered.');
+
+    blinkMonitor = setInterval(async () => {
+      if (blinkDetected || busy || !modelsReady || !profileDescriptor || !video.videoWidth) return;
+      if (Date.now() - blinkStartedAt > BLINK_MAX_WAIT_MS) {
+        setStatus('No blink detected yet. Please blink once naturally.', 'busy');
+        blinkStartedAt = Date.now();
+        closedEyeFrames = 0;
+        return;
+      }
+      try {
+        const result = await detectLiveFace(video);
+        if (!result.ok) return;
+        if (isBlinking(result.landmarks)) {
+          closedEyeFrames++;
+          if (closedEyeFrames >= BLINK_CLOSED_FRAMES) {
+            blinkDetected = true;
+            closedEyeFrames = 0;
+            setStatus('Blink detected. Keep your face centered...', 'success');
+            setChallenge('Blink verified. Now click Start Live Verification to finish.');
+            stopBlinkMonitor();
+          }
+        } else {
+          closedEyeFrames = 0;
+        }
+      } catch (e) {}
+    }, 140);
   }
 
   async function verifyIdentity() {
@@ -251,6 +327,12 @@
       setStatus('Camera is not ready yet. Please wait a moment.', 'error');
       return;
     }
+    if (!blinkDetected) {
+      setStatus('Please blink once naturally before continuing.', 'error');
+      setChallenge('Blink once naturally while keeping your face centered.');
+      startBlinkMonitor();
+      return;
+    }
 
     busy = true;
     capture.disabled = true;
@@ -265,14 +347,17 @@
       setStatus('Live face verification passed. Returning to registration...', 'success');
 
       if (window.opener && !window.opener.closed) {
-        const targetOrigin = new URL(document.referrer || location.href).origin;
+        // Mobile browsers can report an empty referrer, so do not derive
+        // the target origin from it. The opener already owns the nonce and
+        // will validate it before accepting this result.
         window.opener.postMessage({
           type:'JPS_CAMERA_CONFIRMED',
           nonce:nonce,
           match:true,
+          blinked:true,
           distance:Number(average.toFixed(4)),
           timestamp:Date.now()
-        }, targetOrigin === location.origin ? '*' : targetOrigin);
+        }, '*');
         setTimeout(() => window.close(), 700);
       } else {
         setStatus('Verification passed, but the registration window could not be reached. Please close this window and retry.', 'error');
@@ -299,12 +384,13 @@
       if (window.opener && !window.opener.closed) {
         window.opener.postMessage({ type:'JPS_PROFILE_RECEIVED', nonce:nonce }, '*');
       }
-      setStatus('Profile photo loaded. Starting the live camera...', 'busy');
+      setStatus('Profile photo accepted. Starting the live camera...', 'busy');
       if (!stream) await startCamera();
       capture.disabled = !(modelsReady && profileDescriptor && video.videoWidth);
       if (!capture.disabled) {
         setStatus('Ready. Click Start Live Verification to verify your face.', 'success');
-        setChallenge('Click Start Live Verification to compare your live face.');
+        setChallenge('Blink once naturally while keeping your face centered.');
+        startBlinkMonitor();
       }
     } catch (err) {
       capture.disabled = true;
@@ -316,7 +402,8 @@
     if (modelsReady && profileDescriptor && stream) {
       capture.disabled = false;
       setStatus('Ready. Click Start Live Verification to verify your face.', 'success');
-      setChallenge('Click Start Live Verification to compare your live face.');
+      setChallenge('Blink once naturally while keeping your face centered.');
+      startBlinkMonitor();
     }
   });
 

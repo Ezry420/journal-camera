@@ -414,6 +414,9 @@ async function loadModels() {
   await faceapi.nets.faceRecognitionNet.loadFromUri(
     MODEL_URL + 'face_recognition'
   );
+    await faceapi.nets.ssdMobilenetv1.loadFromUri(
+    MODEL_URL + 'ssd_mobilenetv1'
+  );
 
   modelsLoaded = true;
 
@@ -490,17 +493,26 @@ function loadImage(src) {
 
 async function detectLiveFace(img) {
 
-     const options =
-    new faceapi.TinyFaceDetectorOptions({
-      inputSize: 416,
-      scoreThreshold: 0.5
-    });
+  const attempts = [
+    new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.3 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
+  ];
 
-  const detections =
-    await faceapi
-      .detectAllFaces(img, options)
-      .withFaceLandmarks()
-      .withFaceDescriptors();
+  let detections = [];
+
+  for (const options of attempts) {
+
+    detections =
+      await faceapi
+        .detectAllFaces(img, options)
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+
+    if (detections && detections.length > 0) {
+      break;
+    }
+  }
 
   if (!detections || detections.length === 0) {
 
@@ -518,23 +530,10 @@ async function detectLiveFace(img) {
 
   const detection = detections[0];
 
-     if (detection.detection.score < 0.5) {
-
-    throw new Error(
-      'The face in the profile photo is not clear enough.'
-    );
-  }
-
   const box = detection.detection.box;
 
-  const imageArea =
-    img.width * img.height;
-
-  const faceArea =
-    box.width * box.height;
-
   const faceRatio =
-    faceArea / imageArea;
+    (box.width * box.height) / (img.width * img.height);
 
   if (faceRatio < 0.025) {
 

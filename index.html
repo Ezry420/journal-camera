@@ -83,6 +83,9 @@
   // descriptors for the same person, so use a slightly more tolerant face-match threshold.
   const MATCH_THRESHOLD = 0.60;
   const LIVE_SAMPLE_THRESHOLD = 0.66;
+  // Separate detection thresholds for uploaded profile photos and live camera frames.
+  const PROFILE_DETECT_SCORE = 0.40;
+  const LIVE_DETECT_SCORE = 0.50;
 
   let stream = null;
   let profilePhotoDataUrl = '';
